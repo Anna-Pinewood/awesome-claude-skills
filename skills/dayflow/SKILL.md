@@ -232,3 +232,4 @@ ORDER BY start_ts ASC
 10. **When user asks about personal projects** — filter by `category = 'Agents & Blog'`
 11. **If user mentions a person** (e.g. "Sergey", "Seryozha") — search in summary/detailed_summary with Russian name forms
 12. **Calculate time in minutes/hours** using `(end_ts - start_ts) / 60` for minutes
+13. **The query examples above are templates, not the only options.** Use your knowledge of the schema to compose any SQL query that fits the user's question. Combine tables, use JOINs, aggregations, subqueries — whatever is needed
