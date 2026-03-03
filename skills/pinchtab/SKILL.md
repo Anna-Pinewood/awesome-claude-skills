@@ -537,6 +537,44 @@ curl http://localhost:9867/health
 | `PINCHTAB_HEADED` | (unset) | If set, auto-launched profile is headed; unset means headless |
 | `PINCHTAB_DASHBOARD_URL` | `http://localhost:$BRIDGE_PORT` | CLI helper base URL for `pinchtab connect` |
 
+## Troubleshooting
+
+### Health check hangs
+
+After a force-kill or unclean shutdown, Pinchtab may start but stop responding on the HTTP port. Symptoms: `curl http://localhost:9867/health` hangs indefinitely, but `pgrep pinchtab` shows the process is alive.
+
+Fix:
+```bash
+# 1. Kill pinchtab and all its Chrome children
+pkill -f pinchtab; pkill -f "chrome-profile"; sleep 2
+
+# 2. Restart with BRIDGE_NO_RESTORE=true to skip restoring stale tabs
+BRIDGE_HEADLESS=false BRIDGE_NO_RESTORE=true pinchtab > /tmp/pinchtab.log 2>&1 &
+
+# 3. Wait and verify (always use --max-time on health checks!)
+sleep 5 && curl -s --max-time 5 http://localhost:9867/health
+```
+
+**Always use `--max-time 5` on `/health` calls** — without a timeout, curl will hang forever if Pinchtab is stuck, blocking the agent.
+
+### General restart procedure
+
+```bash
+# Check if running
+pgrep -x pinchtab || echo "NOT_RUNNING"
+
+# Clean kill
+pkill -f pinchtab; pkill -f "chrome-profile"; sleep 2
+
+# Start fresh
+BRIDGE_HEADLESS=false BRIDGE_NO_RESTORE=true pinchtab > /tmp/pinchtab.log 2>&1 &
+sleep 5 && curl -s --max-time 5 http://localhost:9867/health
+```
+
+## Known Websites & Recipes
+
+See [websites-and-actions.md](./websites-and-actions.md) for pre-mapped workflows on specific sites (e.g. downloading transcriptions from Ktalk). Using these recipes saves tokens by skipping exploratory snapshots.
+
 ## Tips
 
 - **Always pass `tabId` explicitly** when working with multiple tabs — active tab tracking can be unreliable
