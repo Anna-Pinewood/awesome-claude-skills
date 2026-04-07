@@ -22,53 +22,86 @@ Create scroll-driven, interactive single-page sites that visually break down art
 1. Fetch and analyze the source material
 2. Extract key concepts, structure, and narrative arc
 3. Design slides and pick appropriate visual components
-4. Generate the complete project
+4. Generate slides into the project (copy template, write slides, adjust theme)
 5. Run `npm install && npm run dev` and open in browser
 
 ### Controlled mode (`--plan`)
-1. Fetch and analyze the source material
-2. Propose a slide-by-slide outline (title, content summary, visual component type for each)
-3. Wait for user approval/edits on the outline
-4. After agreement — generate the project
-5. Run `npm install && npm run dev` and open in browser
+
+A collaborative process — the user shapes the narrative, the agent builds it.
+
+**Step 1 — Research & clarify.**
+Fetch and deeply analyze the source material. Then ask the user a small set of focused questions (3-5 max):
+- What's the key message you want to land?
+- Any parts you want to emphasize or skip?
+- Audience — who is this for?
+- Any specific visual ideas or metaphors you have in mind?
+- Anything else that matters to you about how this story is told?
+
+Don't overwhelm with questions. The goal is to understand the user's vision and priorities before planning.
+
+**Step 2 — Propose slide plan.**
+Based on the research and user's answers, present a concise slide plan as a table:
+
+| # | Slide title | Core idea | Visual / animation / interaction |
+|---|---|---|---|
+| 1 | ... | ... | ... |
+| 2 | ... | ... | ... |
+
+Keep it compact — one line per slide, enough detail to evaluate but not a wall of text. The user may accept, reject, reorder, merge, or completely rethink slides. This is a starting point, not a contract.
+
+**Step 3 — Build slide by slide.**
+After the plan is agreed upon, go through slides one at a time:
+- Generate the slide code
+- Show it in the browser (dev server should be running)
+- Get user feedback before moving to the next slide
+- The user may ask to change, redo, or skip any slide
+
+**Step 4 — Polish.**
+After all slides are done, do a full scroll-through and fix any rough transitions or inconsistencies.
 
 ## Tech Stack
 
 - **Vite + React + TypeScript** — fast dev server, hot reload
-- **Framer Motion** — scroll-triggered animations, transitions
+- **Framer Motion** — scroll-triggered animations, transitions, gesture handlers. This is the primary animation engine — use it freely and creatively. Not limited to preset components; any custom animation is welcome
 - **CSS Modules or Tailwind** — styling (user may specify preference)
 - Code highlighting: `prism-react-renderer` or `shiki`
 - No SSR needed — this is a local visual tool
 
-## Project Structure
+## Template
 
-Each project is fully self-contained in a single folder:
+**IMPORTANT:** There is a ready-made project template at `skills/visual-webpage/template/`. Always use it as the base — do NOT generate project scaffolding from scratch.
 
-```
-~/visual-explainers/{topic-slug}/
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-├── index.html
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── styles/
-│   │   └── global.css
-│   ├── components/          # visual building blocks
-│   │   ├── SlideContainer.tsx   # full-viewport scroll-snap wrapper
-│   │   ├── CodeBlock.tsx        # syntax-highlighted code with line animations
-│   │   ├── Treemap.tsx          # interactive treemap with drill-down
-│   │   ├── FlowDiagram.tsx      # animated flow/architecture diagrams
-│   │   ├── AnimatedList.tsx     # items that appear on scroll
-│   │   ├── ComparisonTable.tsx  # side-by-side comparisons
-│   │   ├── KeyPoint.tsx         # highlighted callout / key insight
-│   │   └── ...                  # new components as needed
-│   └── slides/
-│       ├── 01-intro.tsx
-│       ├── 02-{section}.tsx
-│       └── ...
-```
+The template contains:
+- Pre-configured `package.json` with all dependencies (React, Framer Motion, etc.)
+- `vite.config.ts`, `tsconfig.json`, `index.html` — ready to go
+- `src/App.tsx` — scroll-snap container that imports slides
+- `src/styles/theme.css` — CSS variables for palette (adjust per user's style direction)
+- `src/components/` — reusable visual building blocks (see below)
+- `src/slides/` — empty, this is where generated content goes
+
+### Workflow
+1. Copy `template/` → `~/visual-explainers/{topic-slug}/`
+2. Generate slide files in `src/slides/`
+3. Adjust `src/styles/theme.css` for the user's palette/style
+4. Update `src/App.tsx` to import the generated slides
+5. `npm install && npm run dev`
+
+### Base components in the template
+
+- **SlideContainer** — full-viewport scroll-snap wrapper with entrance animation
+- **HeroSlide** — title slide (heading + subtitle + optional background)
+- **CodeBlock** — syntax-highlighted code with line-by-line reveal and hover annotations
+- **AnimatedList** — items appear sequentially on scroll
+- **KeyPoint** — highlighted callout / key insight / quote
+- **ComparisonBlock** — two options side by side (before/after, this vs that)
+
+These are starting blocks, not limits. For any slide, you can:
+- Create new one-off components directly in the slide file
+- Use Framer Motion freely for custom animations (parallax, morphing, staggered reveals, anything)
+- Combine and compose existing components in unexpected ways
+- Build interactive elements from scratch (SVG animations, canvas, drag interactions)
+
+The component library will grow over time as new visual patterns are needed.
 
 ## Output location
 
