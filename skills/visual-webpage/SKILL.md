@@ -80,7 +80,7 @@ The template contains:
 - `src/slides/` — empty, this is where generated content goes
 
 ### Workflow
-1. Copy `template/` → `~/visual-explainers/{topic-slug}/`
+1. Copy `template/` → `./{topic-slug}/` (or user-specified path)
 2. Generate slide files in `src/slides/`
 3. Adjust `src/styles/theme.css` for the user's palette/style
 4. Update `src/App.tsx` to import the generated slides
@@ -105,7 +105,9 @@ The component library will grow over time as new visual patterns are needed.
 
 ## Output location
 
-Projects are saved to `~/visual-explainers/{topic-slug}/`. Each invocation creates a new folder.
+By default, the project is created in the **current working directory** as `./{topic-slug}/`. If the user specifies a different path, use that instead.
+
+**Git repos:** If the current directory is inside a git repository, automatically add the generated folder to `.gitignore` (append `{topic-slug}/` to the root `.gitignore`). Skip this only if the user explicitly says to track it in git.
 
 ## Design & Visual Rules
 
