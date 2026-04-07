@@ -67,26 +67,33 @@ After all slides are done, do a full scroll-through and fix any rough transition
 - Code highlighting: `prism-react-renderer` or `shiki`
 - No SSR needed — this is a local visual tool
 
-## Template
+## Template — MUST USE
 
-**IMPORTANT:** There is a ready-made project template at `skills/visual-webpage/template/`. Always use it as the base — do NOT generate project scaffolding from scratch.
+There is a ready-made project template bundled with this skill. Find it relative to this SKILL.md file at `./template/`.
 
-The template contains:
-- Pre-configured `package.json` with all dependencies (React, Framer Motion, etc.)
-- `vite.config.ts`, `tsconfig.json`, `index.html` — ready to go
-- `src/App.tsx` — scroll-snap container that imports slides
-- `src/styles/theme.css` — CSS variables for palette (adjust per user's style direction)
+**YOU MUST copy this template as the project base. Do NOT create package.json, vite.config.ts, tsconfig.json, index.html, App.tsx, theme.css, or any component files from scratch. They already exist in the template.**
+
+To find the template path: this SKILL.md file is at a known location — the `template/` directory is a sibling next to it. Use `dirname` of this skill's path or locate it via `~/.claude/skills/visual-webpage/template/`.
+
+### What's in the template (DO NOT recreate these)
+- `package.json` — all dependencies pre-configured (React, Framer Motion, prism-react-renderer)
+- `vite.config.ts`, `tsconfig.json`, `index.html` — project config, ready to go
+- `src/App.tsx` — scroll-snap container, just add slide imports here
+- `src/styles/theme.css` — CSS variables for palette, typography, animation timing
 - `src/components/` — reusable visual building blocks (see below)
-- `src/slides/` — empty, this is where generated content goes
+- `src/slides/` — **empty, this is the ONLY place you generate new files**
 
 ### Workflow
-1. Copy `template/` → `./{folder}/` (or user-specified path)
-2. Generate slide files in `src/slides/`
-3. Adjust `src/styles/theme.css` for the user's palette/style
-4. Update `src/App.tsx` to import the generated slides
-5. `npm install && npm run dev`
+1. `cp -r ~/.claude/skills/visual-webpage/template/ ./{folder-name}/`
+2. `cd {folder-name} && npm install`
+3. Edit `src/styles/theme.css` — adjust CSS variables for the user's palette/style
+4. Generate slide files in `src/slides/` — this is where all the new content goes
+5. Edit `src/App.tsx` — add imports for the generated slides
+6. `npm run dev`
 
-### Base components in the template
+**Steps 3-5 are the ONLY files you should modify. Everything else comes from the template as-is.**
+
+### Base components (already in template, just import and use)
 
 - **SlideContainer** — full-viewport scroll-snap wrapper with entrance animation
 - **HeroSlide** — title slide (heading + subtitle + optional background)
@@ -95,13 +102,11 @@ The template contains:
 - **KeyPoint** — highlighted callout / key insight / quote
 - **ComparisonBlock** — two options side by side (before/after, this vs that)
 
-These are starting blocks, not limits. For any slide, you can:
+These are starting blocks, not limits. For any slide, you can also:
 - Create new one-off components directly in the slide file
 - Use Framer Motion freely for custom animations (parallax, morphing, staggered reveals, anything)
 - Combine and compose existing components in unexpected ways
 - Build interactive elements from scratch (SVG animations, canvas, drag interactions)
-
-The component library will grow over time as new visual patterns are needed.
 
 ## Output location
 
