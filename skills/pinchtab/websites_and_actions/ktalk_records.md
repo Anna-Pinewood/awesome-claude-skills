@@ -1,16 +1,10 @@
-# Websites & Actions
-
-Pre-mapped workflows for specific sites. Use these instead of exploratory snapshots to save tokens.
-
----
-
-## Ktalk (2gis.ktalk.ru) — Download transcription
+# Ktalk (2gis.ktalk.ru) — Download transcription
 
 **Auth:** SSO via `fs.2gis.com/adfs/oauth2`. First visit redirects to login page. User must enter credentials manually (headed mode required).
 
 **URL pattern:** `https://2gis.ktalk.ru/recordings/<ID>#transcription`
 
-### Steps
+## Steps
 
 ```bash
 # 1. Navigate to recording
@@ -43,7 +37,7 @@ curl -s -X POST http://localhost:9867/action \
 #    "Транскрипция <название встречи>.txt"
 ```
 
-### Typical ref layout after login
+## Typical ref layout after login
 
 | Element | Role | Approximate position |
 |---|---|---|
@@ -56,7 +50,7 @@ After clicking Download, dropdown items appear **above** the tab row:
 - Brief summary
 - **Transcription** ← this one downloads the .txt
 
-### Minimal token path (if refs are stable)
+## Minimal token path (if refs are stable)
 
 After login, one snapshot is enough to grab all needed refs:
 ```bash

@@ -573,10 +573,21 @@ sleep 5 && curl -s --max-time 5 http://localhost:9867/health
 
 ## Known Websites & Recipes
 
-See [websites-and-actions.md](./websites-and-actions.md) for pre-mapped workflows on specific sites (e.g. downloading transcriptions from Ktalk). Using these recipes saves tokens by skipping exploratory snapshots.
+Pre-mapped workflows for specific sites — use these instead of exploratory snapshots to save tokens.
+
+See [`websites_and_actions/`](./websites_and_actions/) for all recipes:
+
+- [**Ktalk** — Download transcription](./websites_and_actions/ktalk_records.md)
+- [**Mattermost** — Save thread to file](./websites_and_actions/mattermost_threads.md)
+- [**2GIS self-hosted OWA** — Extract calendar events](./websites_and_actions/2gis-owa-calendar.md)
+
+## Cookie Transfer
+
+When a site blocks login in Pinchtab (e.g. invisible hCaptcha detecting CDP), transfer cookies from the user's regular Chrome. See [`cookie_transfer.md`](./cookie_transfer.md) for the full recipe.
 
 ## Tips
 
+- **Always use `--max-time` on ALL curl calls to Pinchtab** — not just `/health`. Navigation, snapshots, text extraction, and actions can all hang if the page is slow, stuck, or Pinchtab is unresponsive. Recommended timeouts: `--max-time 5` for `/health`, `--max-time 10` for `/text`, `/snapshot`, `/action`, `--max-time 30` for `/navigate`. Without this, a hanging curl blocks the agent indefinitely.
 - **Always pass `tabId` explicitly** when working with multiple tabs — active tab tracking can be unreliable
 - Refs are stable between snapshot and actions — no need to re-snapshot before clicking
 - After navigation or major page changes, take a new snapshot to get fresh refs
