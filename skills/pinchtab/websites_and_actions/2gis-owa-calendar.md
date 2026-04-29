@@ -83,7 +83,9 @@ Match event's horizontal center to the nearest day-header center. Day headers gi
     return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
   };
 
-  const events = [...document.querySelectorAll('div._wx_m1')].map(e => {
+  // offsetParent filter drops detached DOM-pool dupes (see Caveats).
+  const events = [...document.querySelectorAll('div._wx_m1')]
+    .filter(e => e.offsetParent).map(e => {
     const r = e.getBoundingClientRect();
     const title = e.querySelector('span._cb_M1')?.textContent.trim() || '';
     const extras = [...e.querySelectorAll('span._cb_T1')]
@@ -107,7 +109,45 @@ Match event's horizontal center to the nearest day-header center. Day headers gi
 })()
 ```
 
+## Week navigation
+
+**URL-based nav doesn't work.** Classic OWA ignores date params in both hash
+and query (`#path=/calendar/view/WorkWeek&date=2026-04-20`, `?date=...`,
+full page reload — all no-op). The visible week lives in client-side SPA
+state, not the URL. Only click imitation works.
+
+### Controls (toolbar, top-left of calendar view)
+
+| What | Selector | How to identify |
+|---|---|---|
+| "Today" button | `button` (or `[role=button]`) with `textContent.trim() === "Сегодня"` | Resets to current week — known state anchor |
+| Next week | `button._wx_w` whose child has class `ms-Icon--chevronRight` | `aria-label` starts with "ДалееНеделя" but only when focused; chevron class is stable |
+| Prev week | `button._wx_w` whose child has class `ms-Icon--chevronLeft` | Same: aria-label is focus-dynamic; chevron class is stable |
+
+### Pattern: navigate to arbitrary week
+
+```js
+// 1. Reset to known state
+document.querySelector('button, [role=button]') /* ...find by textContent "Сегодня" */ .click();
+// 2. Read visible Monday's day-of-month from "<N> Понедельник" header
+// 3. weeks_delta = (target_monday - today_monday) / 7
+// 4. Click chevronRight (or chevronLeft) |weeks_delta| times.
+//    BETWEEN clicks: poll visible Monday's day until it changes.
+//    Naive sleep(N) eats clicks during SPA re-render.
+```
+
+Working implementation: `extract_outlook.py::navigate_to_week` in
+`global-call-sync-system` repo. Safety cap: reject `|delta| > 26` weeks.
+
 ## Caveats
+
+- **`_wx_m1` must be filtered by `offsetParent`.** OWA keeps a DOM pool of
+  detached event nodes from previously-viewed weeks — they have the right
+  title/text but `rect{0,0,0,0}`, so they map to bogus times. Always
+  `.filter(e => e.offsetParent)` before reading geometry. The pool populates
+  only after the user (or automation) has navigated between weeks; fresh
+  cold-load shows no dupes, so this bug is latent and hits only mid-session.
+
 
 - **View must be WorkWeek or Week** — daily view has a different DOM. Check `location.hash`.
 - **Extraction only covers visible hours.** Events scheduled before the first visible hour row (e.g. 7 AM when chart starts at 8) get negative times. Scroll to early morning first if needed, or filter.
