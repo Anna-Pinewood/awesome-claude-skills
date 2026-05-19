@@ -1,2 +1,9 @@
 .DS_Store
 node_modules/
+
+# Секреты — никогда не в git
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc

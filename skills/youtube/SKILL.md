@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: YouTube transcript fetcher. Use when user shares a YouTube URL and wants to process or summarize the content. Produces transcript text without needing to watch the video.
+description: YouTube transcript fetcher. Use when user shares a YouTube URL and wants to process or summarize the content.
 author: amenocturne
 run: just -f {skill_path}/justfile subs
 ---

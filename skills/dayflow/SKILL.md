@@ -1,6 +1,6 @@
 ---
 name: dayflow
-description: Analyze user's day, productivity, projects and activities from DayFlow screen recorder. Use when user asks about their day, schedule, progress on projects, where time was spent, distractions, what they worked on yesterday, productivity patterns, or anything related to their daily activities and screen time.
+description: Analyze user's day, productivity, projects and activities from DayFlow screen recorder. Use when user asks about their day, schedule, progress on projects, where time was spent, distractions, what they worked on yesterday, productivity patterns, or anything related to their screen time.
 user-invocable: true
 argument-hint: [question about your day]
 ---

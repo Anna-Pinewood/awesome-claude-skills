@@ -2,9 +2,6 @@
 name: local-whisper
 description: >
   Transcribe audio files locally using OpenAI Whisper on Apple Silicon.
-  Use when the user asks to transcribe, recognize speech, or convert audio/voice to text.
-  Supports WAV, MP3, M4A, FLAC, OGG and other ffmpeg-compatible formats.
-  Runs fully offline on CPU — no API keys needed.
 user-invocable: true
 argument-hint: <path-to-audio-file>
 ---

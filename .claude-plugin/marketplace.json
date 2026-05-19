@@ -1,0 +1,20 @@
+{
+  "name": "awesome-claude-skills",
+  "owner": {
+    "name": "Olga"
+  },
+  "plugins": [
+    {
+      "name": "second-brain",
+      "source": "./plugins/second-brain",
+      "description": "Skills for working with and formalizing my personal second brain (Obsidian Mirror) — current state, projects, vision, context.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "2gis-team",
+      "source": "./plugins/2gis-team",
+      "description": "Моя «команда» для работы в 2ГИС: читает Mattermost, формулирует ответы в моём стиле. Расширяется на встречи и код.",
+      "version": "0.1.0"
+    }
+  ]
+}

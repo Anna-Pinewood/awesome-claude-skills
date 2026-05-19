@@ -1,12 +1,7 @@
 ---
 name: pinchtab
 description: >
-  Control a headless or headed Chrome browser via Pinchtab's HTTP API. Use for web automation,
-  scraping, form filling, navigation, and multi-tab workflows. Pinchtab exposes the accessibility
-  tree as flat JSON with stable refs — optimized for AI agents (low token cost, fast).
-  Use when the task involves: browsing websites, filling forms, clicking buttons, extracting
-  page text, taking screenshots, or any browser-based automation. Requires a running Pinchtab
-  instance (Go binary).
+  Control a headless or headed Chrome browser via Pinchtab's HTTP API. Use for web automation.
 homepage: https://pinchtab.com
 metadata:
   openclaw:
