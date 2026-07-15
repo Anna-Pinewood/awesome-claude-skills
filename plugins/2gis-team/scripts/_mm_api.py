@@ -82,12 +82,24 @@ def _request(method, path, body=None):
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         body = e.read().decode('utf-8', errors='replace')
+        # Какой именно запрос упал — печатаем всегда.
+        where = f'{method} {path}'
         if e.code == 401 and 'session_expired' in body:
+            # GET аутентифицируется только MMAUTHTOKEN; POST/PUT/DELETE — ещё и MMCSRF.
+            which = 'MMAUTHTOKEN' if method == 'GET' else 'MMAUTHTOKEN и/или MMCSRF'
             raise SystemExit(
-                'Mattermost: HTTP 401 session_expired. Кука протухла. '
-                'Обнови MMAUTHTOKEN в .env (см. cookie.md в operate-mm/).'
+                f'Mattermost: HTTP 401 session_expired на {where}. '
+                f'Протух {which}. Обнови куку(и) в .env '
+                f'(скопируй из веб-инспектора: Storage → Cookies → mm.2gis.one).'
             )
-        raise SystemExit(f'Mattermost API error {e.code} on {method} {path}: {body[:300]}')
+        if e.code == 403 and 'csrf' in body.lower():
+            raise SystemExit(
+                f'Mattermost: HTTP 403 CSRF на {where}. '
+                f'Протух MMCSRF (нужен для {method}-запросов). Обнови MMCSRF в .env.'
+            )
+        raise SystemExit(f'Mattermost API error {e.code} на {where}: {body[:300]}')
+    except urllib.error.URLError as e:
+        raise SystemExit(f'Mattermost: сетевая ошибка на {method} {path}: {e.reason}')
 
 
 def api_get(path):

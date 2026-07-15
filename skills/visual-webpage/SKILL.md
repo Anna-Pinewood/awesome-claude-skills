@@ -29,6 +29,17 @@ The user describes mode and style each time. Two common shapes:
 - **One accent color**, readable typography. system-ui body works; serif/display font for headings is fine.
 - **Source quotes visually distinct** when used.
 
+### Glossary up front (for jargon-heavy sources)
+
+If the source carries a lot of **its own terminology** — a codebase with invented concepts, a paper with coined terms, any topic where the reader meets unfamiliar words on every line — add a **glossary section near the start**, right after the intro/TL;DR and before the deep sections.
+
+- **Plain-language definitions.** One or two sentences each, in everyday words. The point is to lower the barrier so the rest of the page reads easily — not to be precise or exhaustive. The detailed treatment is the job of the later sections.
+- **Up to ~10 terms.** Pick only the load-bearing ones the reader can't proceed without. Don't list every term — that's the body's job. Fewer, well-chosen entries beat a wall.
+- **Make it illustrative, not a wall of text.** Prefer a small diagram, a labeled card grid, or a schematic that shows how the terms relate to each other — not just a `<dl>`. A reader should be able to glance at it and grasp the shape.
+- **Define before you use.** Once a term is in the glossary, the later sections can lean on it without re-explaining.
+
+Skip this when the source uses mostly common vocabulary — don't manufacture a glossary where none is needed.
+
 ## Style references — required before writing HTML
 
 Look at these files in `/Users/olgalipina/Documents/awesome-claude-skills/html-style/`:
@@ -49,7 +60,7 @@ If a block's visual is not obvious, pick the closest analog in the references. D
 
 1. **Read the source fully.** Don't extract yet — get the shape first.
 2. **Confirm mode and angle** with the user if not stated (deep dive vs pitch deck, what to emphasize, what style hints).
-3. **Plan sections.** Aim for 7–12. Each section earns its place. No filler. If the user later asks to add more, add them — the cap is a default, not a wall.
+3. **Plan sections.** Aim for 7–12. Each section earns its place. No filler. If the user later asks to add more, add them — the cap is a default, not a wall. **Scan the source for its own terminology** — if there's a lot, plan a glossary section near the start (see "Glossary up front").
 4. **Pick a visual anchor per section** only if it aids comprehension: card grid, quote block, two-column compare, inline-SVG diagram, annotated code block, key callout. A plain paragraph is fine when that's enough.
 5. **Write the HTML.** Single file, inline CSS, inline SVG, sticky toggleable TOC.
 6. **Open html.** + return path to the file + anything skipped or reconstructed.
@@ -59,5 +70,6 @@ If a block's visual is not obvious, pick the closest analog in the references. D
 - [ ] One self-contained file, no external deps, opens offline.
 - [ ] Sticky TOC on the left, toggleable, clicks scroll, **active section highlighted on scroll** (verify by scrolling the file).
 - [ ] Clear visual break between sections.
+- [ ] If the source is jargon-heavy: a glossary section near the start (≤10 terms, plain language, illustrative).
 - [ ] Visual style matches one of the references, not invented.
 - [ ] If quotes are used: visually distinct and sourced.
