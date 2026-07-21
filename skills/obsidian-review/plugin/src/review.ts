@@ -18,6 +18,7 @@ import {
 import type ObsidianReviewPlugin from "./main";
 import { DIFF_VIEW_TYPE } from "./diffView";
 import { PANEL_VIEW_TYPE, ReviewPanelView } from "./panel";
+import { acceptDelete, acceptInsert, rejectDelete, rejectInsert } from "./chunkOps";
 
 export interface PushPayload {
 	files: { path: string; baseline: string; deleted: boolean }[];
@@ -178,6 +179,10 @@ export class ReviewManager {
 				})(),
 				origHead: chunks && cm ? getOriginalDoc(cm.state).toString().slice(0, 130) : null,
 				docHead: cm ? cm.state.doc.sliceString(0, 130) : null,
+				origTail: chunks && cm ? JSON.stringify(getOriginalDoc(cm.state).toString().slice(-80)) : null,
+				docTail: cm ? JSON.stringify(cm.state.doc.toString().slice(-80)) : null,
+				lens: chunks && cm ? { orig: getOriginalDoc(cm.state).length, doc: cm.state.doc.length } : null,
+				chunkCoords: chunks?.chunks.map((c) => ({ fromA: c.fromA, toA: c.toA, fromB: c.fromB, toB: c.toB })) ?? null,
 				btnDel: (() => {
 					const el = cm?.dom.querySelector(".cm-deletedChunk .obsreview-btn") as HTMLElement | null;
 					if (!el) return null;
@@ -351,35 +356,22 @@ export class ReviewManager {
 		if (!chunk) return;
 
 		const baseline = getOriginalDoc(view.state).toString();
-		const doc = view.state.doc;
-		const fromA = Math.min(chunk.fromA, baseline.length);
-		const toA = Math.min(chunk.toA, baseline.length);
-		const fromB = Math.min(chunk.fromB, doc.length);
-		const toB = Math.min(chunk.toB, doc.length);
-		const oldText = baseline.slice(fromA, toA);
-		const newText = doc.sliceString(fromB, toB);
+		const doc = view.state.doc.toString();
 
 		// original редактируется ТОЛЬКО через originalDocChangeEffect: reconfigure
-		// бесполезен — CodeMirror сохраняет значения полей между реконфигурациями
-		if (part === "del" && action === "accept") {
-			// старый текст окончательно забыт: убираем его из original
-			const changes = ChangeSet.of({ from: fromA, to: toA, insert: "" }, baseline.length);
-			view.dispatch({ effects: originalDocChangeEffect(view.state, changes), userEvent: "accept" });
-		} else if (part === "del" && action === "reject") {
-			// вернуть старые строки в файл, не трогая добавленных
-			view.dispatch({ changes: { from: fromB, to: fromB, insert: withTrailingNl(oldText) } });
-		} else if (part === "ins" && action === "accept") {
-			// добавленное признано частью базы (вставляем в original после старой
-			// части); удалённое (если было) остаётся диффом
-			const glue = toA > 0 && !baseline.slice(0, toA).endsWith("\n") ? "\n" : "";
-			const changes = ChangeSet.of(
-				{ from: toA, to: toA, insert: glue + withTrailingNl(newText) },
-				baseline.length,
-			);
+		// бесполезен — CodeMirror сохраняет значения полей между реконфигурациями.
+		// Математика регионов — в chunkOps (покрыта юнит-тестами, включая EOF).
+		if (action === "accept") {
+			const spec =
+				part === "del" ? acceptDelete(chunk, baseline, doc) : acceptInsert(chunk, baseline, doc);
+			if (!spec) return;
+			const changes = ChangeSet.of(spec, baseline.length);
 			view.dispatch({ effects: originalDocChangeEffect(view.state, changes), userEvent: "accept" });
 		} else {
-			// отклонить добавление: убрать новые строки из файла
-			view.dispatch({ changes: { from: fromB, to: toB, insert: "" } });
+			const spec =
+				part === "del" ? rejectDelete(chunk, baseline, doc) : rejectInsert(chunk, baseline, doc);
+			if (!spec) return;
+			view.dispatch({ changes: spec, userEvent: "revert" });
 		}
 	}
 
@@ -597,9 +589,6 @@ function normalizeFrontmatter(baseline: string, current: string): string {
 	return cur + baseline;
 }
 
-function withTrailingNl(s: string): string {
-	return s === "" || s.endsWith("\n") ? s : `${s}\n`;
-}
 
 function countLines(s: string): number {
 	if (!s) return 0;

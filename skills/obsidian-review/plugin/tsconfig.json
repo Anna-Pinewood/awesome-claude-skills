@@ -3,8 +3,13 @@
 		"target": "ES2020",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"lib": ["DOM", "ES2020"],
-		"types": ["node"],
+		"lib": [
+			"DOM",
+			"ES2020"
+		],
+		"types": [
+			"node"
+		],
 		"strict": true,
 		"noImplicitAny": true,
 		"skipLibCheck": true,
@@ -12,5 +17,10 @@
 		"isolatedModules": true,
 		"noEmit": true
 	},
-	"include": ["src/**/*.ts"]
+	"include": [
+		"src/**/*.ts"
+	],
+	"exclude": [
+		"src/**/*.test.ts"
+	]
 }
