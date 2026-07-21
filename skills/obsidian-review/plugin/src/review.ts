@@ -106,7 +106,10 @@ export class ReviewManager {
 	/** Живое состояние для отладки (GET /status). */
 	debugStatus() {
 		const views = this.app.workspace.getLeavesOfType("markdown").map((leaf) => {
-			const view = leaf.view as MarkdownView;
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) {
+				return { deferred: true };
+			}
 			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
 			const chunks = cm ? getChunks(cm.state) : null;
 			return {
@@ -138,7 +141,7 @@ export class ReviewManager {
 
 	private findMarkdownLeaf(path: string): WorkspaceLeaf | null {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
-			if ((leaf.view as MarkdownView).file?.path === path) return leaf;
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === path) return leaf;
 		}
 		return null;
 	}
@@ -153,7 +156,9 @@ export class ReviewManager {
 	 */
 	attachToOpenViews() {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
-			const view = leaf.view as MarkdownView;
+			const view = leaf.view;
+			// фоновые вкладки Obsidian ≥1.7 — deferred-заглушки, не MarkdownView
+			if (!(view instanceof MarkdownView)) continue;
 			const path = view.file?.path;
 			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
 			if (!cm) continue;

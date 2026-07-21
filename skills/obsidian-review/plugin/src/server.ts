@@ -29,6 +29,17 @@ export class ReviewServer {
 	}
 
 	private handle(req: http.IncomingMessage, res: http.ServerResponse) {
+		try {
+			this.handleInner(req, res);
+		} catch (e) {
+			// зависший запрос хуже ошибки: любое исключение -> честный 500
+			console.error("obsidian-review: ошибка обработчика", e);
+			if (!res.headersSent) res.writeHead(500);
+			res.end(String(e));
+		}
+	}
+
+	private handleInner(req: http.IncomingMessage, res: http.ServerResponse) {
 		if (req.headers.authorization !== `Bearer ${this.plugin.settings.token}`) {
 			res.writeHead(401);
 			res.end();
