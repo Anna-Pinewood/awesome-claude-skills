@@ -50,6 +50,22 @@ export class ReviewServer {
 			res.end(JSON.stringify(this.plugin.review.debugStatus()));
 			return;
 		}
+		if (req.method === "POST" && req.url === "/reload") {
+			// сначала ответить, потом перезагружаться — сервер умрёт вместе с плагином
+			res.writeHead(200);
+			res.end("reloading");
+			const plugins = (this.plugin.app as unknown as {
+				plugins: {
+					disablePlugin(id: string): Promise<void>;
+					enablePlugin(id: string): Promise<void>;
+				};
+			}).plugins;
+			window.setTimeout(async () => {
+				await plugins.disablePlugin("obsidian-review");
+				await plugins.enablePlugin("obsidian-review");
+			}, 100);
+			return;
+		}
 		if (req.method !== "POST" || req.url !== "/review") {
 			res.writeHead(404);
 			res.end();

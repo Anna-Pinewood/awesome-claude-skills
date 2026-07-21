@@ -118,6 +118,10 @@ export class ReviewManager {
 				hasEditor: Boolean(cm),
 				hasMerge: chunks !== null,
 				chunks: chunks?.chunks.length ?? null,
+				// декорации в DOM: если счётчики > 0, а глазами пусто — проблема в CSS
+				domChanged: cm?.dom.querySelectorAll(".cm-changedLine, .cm-changedText").length ?? null,
+				domDeleted: cm?.dom.querySelectorAll(".cm-deletedChunk").length ?? null,
+				domGutter: cm?.dom.querySelectorAll(".cm-changeGutter").length ?? null,
 			};
 		});
 		return { pending: [...this.pending.keys()], views };
@@ -283,12 +287,15 @@ export class ReviewManager {
 			view.addAction("x", "Отклонить правки в файле", () => void this.rejectFile(path)),
 			view.addAction("check", "Принять правки в файле", () => this.acceptFile(path)),
 		];
+		// метим классом: WeakMap-учёт теряется при пересоздании вью, класс — нет
+		els.forEach((el) => el.addClass("obsreview-action"));
 		this.actionEls.set(view, els);
 	}
 
 	private removeActions(view: MarkdownView) {
 		this.actionEls.get(view)?.forEach((el) => el.remove());
 		this.actionEls.delete(view);
+		view.containerEl.querySelectorAll(".obsreview-action").forEach((el) => el.remove());
 	}
 
 	// ---- статус-бар ----
