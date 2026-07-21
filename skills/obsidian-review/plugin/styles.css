@@ -26,8 +26,7 @@
 	vertical-align: text-top;
 }
 .cm-deletedChunk .obsreview-btns {
-	float: right;
-	margin: 2px 4px 0 8px;
+	margin-right: 8px;
 }
 .obsreview-btn,
 .cm-deletedChunk .obsreview-btn {

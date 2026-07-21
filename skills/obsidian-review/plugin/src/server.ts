@@ -66,6 +66,22 @@ export class ReviewServer {
 			window.setTimeout(() => void plugins.enablePlugin("obsidian-review"), 600);
 			return;
 		}
+		if (req.method === "POST" && req.url === "/op") {
+			const bufs: Buffer[] = [];
+			req.on("data", (c: Buffer) => bufs.push(c));
+			req.on("end", () => {
+				try {
+					const { path, chunkIndex, part, action } = JSON.parse(Buffer.concat(bufs).toString("utf8"));
+					const result = this.plugin.review.testOp(path, chunkIndex, part, action);
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(JSON.stringify(result));
+				} catch (e) {
+					res.writeHead(400);
+					res.end(String(e));
+				}
+			});
+			return;
+		}
 		if (req.method !== "POST" || req.url !== "/review") {
 			res.writeHead(404);
 			res.end();

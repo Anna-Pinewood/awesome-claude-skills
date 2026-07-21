@@ -1,5 +1,5 @@
 import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from "obsidian";
-import { Compartment, RangeSetBuilder, Text } from "@codemirror/state";
+import { ChangeSet, Compartment, RangeSetBuilder, Text } from "@codemirror/state";
 import {
 	Decoration,
 	DecorationSet,
@@ -8,7 +8,13 @@ import {
 	ViewUpdate,
 	WidgetType,
 } from "@codemirror/view";
-import { Chunk, getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
+import {
+	Chunk,
+	getChunks,
+	getOriginalDoc,
+	originalDocChangeEffect,
+	unifiedMergeView,
+} from "@codemirror/merge";
 import type ObsidianReviewPlugin from "./main";
 import { DIFF_VIEW_TYPE } from "./diffView";
 import { PANEL_VIEW_TYPE, ReviewPanelView } from "./panel";
@@ -318,7 +324,8 @@ export class ReviewManager {
 			ctl.appendChild(makeBtn("reject", "Отклонить удаление (вернуть текст)", () => {
 				this.chunkOp(path, view, view.posAtDOM(chunkEl), "del", "reject");
 			}));
-			chunkEl.prepend(ctl);
+			// в начало первой красной строки — симметрично кнопкам добавления
+			(chunkEl.querySelector(".cm-deletedLine") ?? chunkEl).prepend(ctl);
 		});
 	}
 
@@ -352,38 +359,50 @@ export class ReviewManager {
 		const oldText = baseline.slice(fromA, toA);
 		const newText = doc.sliceString(fromB, toB);
 
+		// original редактируется ТОЛЬКО через originalDocChangeEffect: reconfigure
+		// бесполезен — CodeMirror сохраняет значения полей между реконфигурациями
 		if (part === "del" && action === "accept") {
-			// старый текст окончательно забыт
-			this.setBaselineAndReattach(path, baseline.slice(0, fromA) + baseline.slice(toA));
+			// старый текст окончательно забыт: убираем его из original
+			const changes = ChangeSet.of({ from: fromA, to: toA, insert: "" }, baseline.length);
+			view.dispatch({ effects: originalDocChangeEffect(view.state, changes), userEvent: "accept" });
 		} else if (part === "del" && action === "reject") {
 			// вернуть старые строки в файл, не трогая добавленных
 			view.dispatch({ changes: { from: fromB, to: fromB, insert: withTrailingNl(oldText) } });
 		} else if (part === "ins" && action === "accept") {
-			// добавленное признано частью базы; удалённое (если было) остаётся диффом
+			// добавленное признано частью базы (вставляем в original после старой
+			// части); удалённое (если было) остаётся диффом
 			const glue = toA > 0 && !baseline.slice(0, toA).endsWith("\n") ? "\n" : "";
-			this.setBaselineAndReattach(path, baseline.slice(0, toA) + glue + withTrailingNl(newText) + baseline.slice(toA));
+			const changes = ChangeSet.of(
+				{ from: toA, to: toA, insert: glue + withTrailingNl(newText) },
+				baseline.length,
+			);
+			view.dispatch({ effects: originalDocChangeEffect(view.state, changes), userEvent: "accept" });
 		} else {
 			// отклонить добавление: убрать новые строки из файла
 			view.dispatch({ changes: { from: fromB, to: toB, insert: "" } });
 		}
 	}
 
-	private setBaselineAndReattach(path: string, baseline: string) {
-		if (!this.pending.has(path)) return;
-		this.pending.set(path, baseline);
+	/** Прогон операции без клика — для автономного тестирования через POST /op. */
+	testOp(path: string, chunkIndex: number, part: "ins" | "del", action: "accept" | "reject") {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
 			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
-			if (!cm) continue;
-			cm.dispatch({ effects: this.compartment.reconfigure(this.mergeExtensions(path, baseline)) });
-			if (getChunks(cm.state)?.chunks.length === 0) {
-				this.pending.delete(path);
-				this.afterFileResolved(path);
-				return;
-			}
+			const info = cm ? getChunks(cm.state) : null;
+			if (!cm || !info) continue;
+			const chunk = info.chunks[chunkIndex];
+			if (!chunk) return { ok: false, error: `нет ханка ${chunkIndex}, всего ${info.chunks.length}` };
+			this.chunkOp(path, cm, Math.min(chunk.fromB, cm.state.doc.length), part, action);
+			return {
+				ok: true,
+				log: this.opLog[this.opLog.length - 1],
+				chunksAfter: getChunks(cm.state)?.chunks.length ?? null,
+				docHead: cm.state.doc.sliceString(0, 250),
+				origHead: getOriginalDoc(cm.state).toString().slice(0, 250),
+			};
 		}
-		this.updateStatus();
+		return { ok: false, error: "открытый редактор файла не найден" };
 	}
 
 	/**
@@ -399,7 +418,8 @@ export class ReviewManager {
 		const normalized = normalizeFrontmatter(orig, u.state.doc.toString());
 		if (normalized !== orig) {
 			// dispatch внутри update-листенера запрещён — откладываем
-			window.setTimeout(() => this.setBaselineAndReattach(path, normalized), 0);
+			const view = u.view;
+			window.setTimeout(() => this.applyFmNormalization(view, path), 0);
 			return;
 		}
 		this.pending.set(path, orig);
@@ -412,6 +432,20 @@ export class ReviewManager {
 		} else {
 			this.updateStatus();
 		}
+	}
+
+	/** Подменить frontmatter в original на текущий — через штатный эффект. */
+	private applyFmNormalization(view: EditorView, path: string) {
+		if (!this.pending.has(path)) return;
+		const state = view.state;
+		if (getChunks(state) === null) return;
+		const orig = getOriginalDoc(state).toString();
+		const cur = state.doc.toString();
+		if (normalizeFrontmatter(orig, cur) === orig) return;
+		const origFmLen = orig.match(FM_RE)?.[0].length ?? 0;
+		const curFm = cur.match(FM_RE)?.[0] ?? "";
+		const changes = ChangeSet.of({ from: 0, to: origFmLen, insert: curFm }, orig.length);
+		view.dispatch({ effects: originalDocChangeEffect(state, changes) });
 	}
 
 	// ---- статистика для панели: +добавлено −удалено (в строках) ----
