@@ -60,10 +60,10 @@ export class ReviewServer {
 					enablePlugin(id: string): Promise<void>;
 				};
 			}).plugins;
-			window.setTimeout(async () => {
-				await plugins.disablePlugin("obsidian-review");
-				await plugins.enablePlugin("obsidian-review");
-			}, 100);
+			// НЕ await-цепочкой: колбэк живёт в умирающем инстансе, его промисы
+			// могут не резолвнуться после disable — enable планируем независимо
+			window.setTimeout(() => void plugins.disablePlugin("obsidian-review"), 100);
+			window.setTimeout(() => void plugins.enablePlugin("obsidian-review"), 600);
 			return;
 		}
 		if (req.method !== "POST" || req.url !== "/review") {

@@ -168,6 +168,20 @@ export class ReviewManager {
 						html: el.outerHTML.slice(0, 700),
 					};
 				})(),
+				origHead: chunks && cm ? getOriginalDoc(cm.state).toString().slice(0, 130) : null,
+				docHead: cm ? cm.state.doc.sliceString(0, 130) : null,
+				btnDel: (() => {
+					const el = cm?.dom.querySelector(".cm-deletedChunk .obsreview-btn") as HTMLElement | null;
+					if (!el) return null;
+					const s = getComputedStyle(el);
+					return { fontSize: s.fontSize, color: s.color, w: el.offsetWidth, h: el.offsetHeight, overflow: s.overflow, indent: s.textIndent };
+				})(),
+				btnIns: (() => {
+					const el = cm?.dom.querySelector(".obsreview-btns-ins .obsreview-btn") as HTMLElement | null;
+					if (!el) return null;
+					const s = getComputedStyle(el);
+					return { fontSize: s.fontSize, color: s.color, w: el.offsetWidth, h: el.offsetHeight, overflow: s.overflow, indent: s.textIndent };
+				})(),
 			};
 		});
 		const greenVar = getComputedStyle(document.body)
@@ -185,9 +199,10 @@ export class ReviewManager {
 			await leaf.openFile(file, { active: false });
 		}
 		// подсветка живёт в редакторе — переводим вкладку в Live Preview
+		// (mode: source + source: false = LP; source: true был бы raw-режимом)
 		const state = leaf.getViewState();
-		if (state.type === "markdown" && state.state?.mode !== "source") {
-			state.state = { ...state.state, mode: "source" };
+		if (state.type === "markdown" && (state.state?.mode !== "source" || state.state?.source !== false)) {
+			state.state = { ...state.state, mode: "source", source: false };
 			await leaf.setViewState(state);
 		}
 	}
