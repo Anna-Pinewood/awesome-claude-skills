@@ -29,7 +29,8 @@
 	float: right;
 	margin: 2px 4px 0 8px;
 }
-.obsreview-btn {
+.obsreview-btn,
+.cm-deletedChunk .obsreview-btn {
 	width: 20px;
 	height: 20px;
 	padding: 0;
@@ -38,7 +39,8 @@
 	border-radius: 5px;
 	cursor: pointer;
 	border: 1px solid var(--background-modifier-border);
-	color: var(--text-muted);
+	/* внутри .cm-deletedChunk чужой CSS красит текст кнопок в белый — прибиваем */
+	color: var(--text-normal) !important;
 }
 .obsreview-btn-accept {
 	background: rgba(var(--color-green-rgb), 0.12);

@@ -60,7 +60,9 @@ export class ReviewManager {
 			}
 			const file = this.app.vault.getAbstractFileByPath(f.path);
 			if (!(file instanceof TFile)) continue;
-			const current = await this.app.vault.cachedRead(file);
+			// именно read, не cachedRead: push приходит сразу после внешней записи,
+			// кэш Obsidian может ещё не видеть изменение
+			const current = await this.app.vault.read(file);
 			// файл уже в ревью → за основу берём СТАРЫЙ базлайн: дифф накапливается
 			const baseline = normalizeFrontmatter(this.pending.get(f.path) ?? f.baseline, current);
 			if (baseline === current) {
@@ -187,7 +189,7 @@ export class ReviewManager {
 		const greenVar = getComputedStyle(document.body)
 			.getPropertyValue("--color-green-rgb")
 			.trim();
-		return { pending: [...this.pending.keys()], lastError: this.lastError, greenVar, views };
+		return { pending: [...this.pending.keys()], lastError: this.lastError, opLog: this.opLog, greenVar, views };
 	}
 
 	private async openForReview(path: string) {
@@ -320,7 +322,19 @@ export class ReviewManager {
 		});
 	}
 
+	opLog: string[] = [];
+
 	chunkOp(path: string, view: EditorView, pos: number, part: "ins" | "del", action: "accept" | "reject") {
+		try {
+			this.chunkOpInner(path, view, pos, part, action);
+			this.opLog.push(`${part}/${action} pos=${pos} ok`);
+		} catch (e) {
+			this.opLog.push(`${part}/${action} pos=${pos} FAIL: ${e instanceof Error ? e.stack : e}`);
+		}
+		if (this.opLog.length > 10) this.opLog.shift();
+	}
+
+	private chunkOpInner(path: string, view: EditorView, pos: number, part: "ins" | "del", action: "accept" | "reject") {
 		const info = getChunks(view.state);
 		if (!info) return;
 		const chunk =
