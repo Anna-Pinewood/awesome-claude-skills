@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-review",
+	"name": "Claude Review",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Ревью правок Claude Code: подсветка диффов на страницах, accept/reject по ханкам, файлам и всем изменениям, side-by-side режим.",
+	"author": "olgalipina",
+	"isDesktopOnly": true
+}

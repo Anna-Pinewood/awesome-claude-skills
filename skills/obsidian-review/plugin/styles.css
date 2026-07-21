@@ -1,0 +1,113 @@
+/* ---- inline (unified) дифф в редакторе ---- */
+
+/* добавленное — зелёным */
+.cm-changedLine {
+	background: rgba(var(--color-green-rgb), 0.09) !important;
+}
+.cm-changedText {
+	background: rgba(var(--color-green-rgb), 0.28) !important;
+}
+
+/* удалённое — красным, зачёркнуто */
+.cm-deletedChunk {
+	background: rgba(var(--color-red-rgb), 0.09) !important;
+}
+.cm-deletedChunk .cm-deletedText {
+	background: rgba(var(--color-red-rgb), 0.22);
+	text-decoration: line-through;
+}
+
+/* встроенные кнопки Accept/Reject у ханков unified-вью */
+.cm-chunkButtons button {
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	padding: 1px 8px;
+	margin-left: 4px;
+}
+.cm-chunkButtons button[name="accept"]:hover {
+	background: rgba(var(--color-green-rgb), 0.25);
+}
+.cm-chunkButtons button[name="reject"]:hover {
+	background: rgba(var(--color-red-rgb), 0.25);
+}
+
+/* ---- side-by-side вью ---- */
+
+.obsreview-diff-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 0;
+}
+
+.obsreview-diff-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.obsreview-diff-title {
+	flex: 1;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.obsreview-diff-panes {
+	flex: 1;
+	overflow: auto;
+}
+.obsreview-diff-panes .cm-mergeView {
+	height: 100%;
+}
+.obsreview-diff-panes .cm-editor {
+	height: 100%;
+	font-family: var(--font-text);
+	font-size: var(--font-text-size);
+}
+
+/* подсветка изменений в merge-вью */
+.obsreview-diff-panes .cm-merge-a .cm-changedLine {
+	background: rgba(var(--color-red-rgb), 0.09) !important;
+}
+.obsreview-diff-panes .cm-merge-a .cm-changedText {
+	background: rgba(var(--color-red-rgb), 0.22) !important;
+}
+.obsreview-diff-panes .cm-merge-b .cm-changedLine {
+	background: rgba(var(--color-green-rgb), 0.09) !important;
+}
+.obsreview-diff-panes .cm-merge-b .cm-changedText {
+	background: rgba(var(--color-green-rgb), 0.28) !important;
+}
+
+/* кнопки ✓/✗ на ханках справа */
+.obsreview-chunk-btns {
+	display: inline-flex;
+	gap: 2px;
+	margin-right: 6px;
+	vertical-align: baseline;
+}
+.obsreview-chunk-btns button {
+	background: var(--interactive-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	font-size: 10px;
+	line-height: 1;
+	padding: 2px 5px;
+}
+.obsreview-chunk-btns button:first-child:hover {
+	background: rgba(var(--color-green-rgb), 0.3);
+}
+.obsreview-chunk-btns button:last-child:hover {
+	background: rgba(var(--color-red-rgb), 0.3);
+}
