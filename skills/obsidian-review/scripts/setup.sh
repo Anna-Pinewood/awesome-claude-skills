@@ -43,7 +43,7 @@ cat <<EOF
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__obsidian__edit|mcp__obsidian__vault|Edit|Write",
+        "matcher": "mcp__obsidian__edit|mcp__obsidian__vault|Edit|Write|Bash",
         "hooks": [
           {"type": "command", "command": "$SCRIPT_DIR/ensure-baseline.sh", "timeout": 30}
         ]
