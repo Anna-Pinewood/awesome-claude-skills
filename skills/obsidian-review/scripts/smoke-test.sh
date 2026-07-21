@@ -65,6 +65,9 @@ pretooluse_input "/tmp/чужой-файл.md" | "$SCRIPT_DIR/ensure-baseline.sh
 jq -n '{tool_name: "mcp__obsidian__vault", tool_input: {action: "search"}}' |
 	"$SCRIPT_DIR/ensure-baseline.sh"
 [ ! -f "$OBSREVIEW_GIT_DIR/task-active" ] || fail "s3: маркер от read-действия"
+jq -n '{tool_name: "Bash", tool_input: {command: "ls /tmp"}}' |
+	"$SCRIPT_DIR/ensure-baseline.sh"
+[ ! -f "$OBSREVIEW_GIT_DIR/task-active" ] || fail "s3: маркер от bash без пути волта"
 touch "$OBSREVIEW_GIT_DIR/task-active"
 ok "s3: фильтрация вызовов"
 
@@ -120,6 +123,15 @@ rm "$OBSREVIEW_VAULT/b.md"
 jq -e '.files[] | select(.path == "b.md") | .deleted == true' \
 	"$TMP/received.json" >/dev/null || fail "s6: удаление не помечено deleted"
 ok "s6: удаление файла"
+
+# --- сценарий 7: bash-команда с путём волта ставит маркер (дерево чистое → без коммита)
+before="$(commits)"
+jq -n --arg c "echo hi >> '$OBSREVIEW_VAULT/notes/a.md'" \
+	'{tool_name: "Bash", tool_input: {command: $c}}' |
+	"$SCRIPT_DIR/ensure-baseline.sh"
+[ -f "$OBSREVIEW_GIT_DIR/task-active" ] || fail "s7: bash с путём волта не поставил маркер"
+[ "$(commits)" = "$before" ] || fail "s7: лишний коммит на чистом дереве"
+ok "s7: bash-эвристика"
 
 echo
 echo "SMOKE TEST PASSED"
