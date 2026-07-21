@@ -18,22 +18,53 @@
 	text-decoration: none !important;
 }
 
-/* встроенные кнопки Accept/Reject у ханков unified-вью */
-.cm-chunkButtons button {
-	background: var(--interactive-normal);
-	color: var(--text-normal);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
+/* свои раздельные кнопки ✓/✕: маленькие, пастельные */
+.obsreview-btns {
+	display: inline-flex;
+	gap: 3px;
+	margin-right: 8px;
+	vertical-align: text-top;
+}
+.cm-deletedChunk .obsreview-btns {
+	float: right;
+	margin: 2px 4px 0 8px;
+}
+.obsreview-btn {
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	line-height: 1;
+	font-size: 12px;
+	border-radius: 5px;
 	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+}
+.obsreview-btn-accept {
+	background: rgba(var(--color-green-rgb), 0.12);
+}
+.obsreview-btn-reject {
+	background: rgba(var(--color-red-rgb), 0.12);
+}
+.obsreview-btn-accept:hover {
+	background: rgba(var(--color-green-rgb), 0.3);
+}
+.obsreview-btn-reject:hover {
+	background: rgba(var(--color-red-rgb), 0.3);
+}
+
+/* статистика +N −M */
+.obsreview-stats {
+	display: inline-flex;
+	gap: 5px;
 	font-size: var(--font-ui-smaller);
-	padding: 1px 8px;
-	margin-left: 4px;
+	font-variant-numeric: tabular-nums;
 }
-.cm-chunkButtons button[name="accept"]:hover {
-	background: rgba(var(--color-green-rgb), 0.25);
+.obsreview-plus {
+	color: var(--color-green);
 }
-.cm-chunkButtons button[name="reject"]:hover {
-	background: rgba(var(--color-red-rgb), 0.25);
+.obsreview-minus {
+	color: var(--color-red);
 }
 
 /* ---- side-by-side вью ---- */

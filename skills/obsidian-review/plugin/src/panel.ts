@@ -63,6 +63,12 @@ export class ReviewPanelView extends ItemView {
 				text: f.created ? "новый" : "изменён",
 				cls: `obsreview-badge ${f.created ? "is-created" : "is-modified"}`,
 			});
+			const stats = title.createSpan({ cls: "obsreview-stats" });
+			void this.plugin.review.diffStats(f.path).then((s) => {
+				if (!s) return;
+				stats.createSpan({ text: `+${s.added}`, cls: "obsreview-plus" });
+				stats.createSpan({ text: `−${s.removed}`, cls: "obsreview-minus" });
+			});
 			const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
 			if (dir) name.createDiv({ text: dir, cls: "obsreview-panel-dir" });
 

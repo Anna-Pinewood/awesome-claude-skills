@@ -1,7 +1,14 @@
 import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from "obsidian";
-import { Compartment } from "@codemirror/state";
-import { EditorView, ViewUpdate } from "@codemirror/view";
-import { getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
+import { Compartment, RangeSetBuilder, Text } from "@codemirror/state";
+import {
+	Decoration,
+	DecorationSet,
+	EditorView,
+	ViewPlugin,
+	ViewUpdate,
+	WidgetType,
+} from "@codemirror/view";
+import { Chunk, getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
 import type ObsidianReviewPlugin from "./main";
 import { DIFF_VIEW_TYPE } from "./diffView";
 import { PANEL_VIEW_TYPE, ReviewPanelView } from "./panel";
@@ -51,9 +58,22 @@ export class ReviewManager {
 				deleted.push(f.path);
 				continue;
 			}
-			// файл уже в ревью → оставляем СТАРЫЙ базлайн: дифф накапливается
-			if (!this.pending.has(f.path)) this.pending.set(f.path, f.baseline);
+			const file = this.app.vault.getAbstractFileByPath(f.path);
+			if (!(file instanceof TFile)) continue;
+			const current = await this.app.vault.cachedRead(file);
+			// файл уже в ревью → за основу берём СТАРЫЙ базлайн: дифф накапливается
+			const baseline = normalizeFrontmatter(this.pending.get(f.path) ?? f.baseline, current);
+			if (baseline === current) {
+				// весь дифф свёлся к frontmatter (например, плагин дат) — не показываем
+				this.pending.delete(f.path);
+				continue;
+			}
+			this.pending.set(f.path, baseline);
 			toOpen.push(f.path);
+		}
+		if (toOpen.length === 0 && deleted.length === 0) {
+			this.updateStatus();
+			return;
 		}
 		let msg = `Claude изменил файлов: ${toOpen.length}`;
 		if (deleted.length) msg += `\nУдалено: ${deleted.join(", ")} (восстановление — из git-архива)`;
@@ -209,22 +229,132 @@ export class ReviewManager {
 	private attach(view: MarkdownView, cm: EditorView, path: string) {
 		const baseline = this.pending.get(path);
 		if (baseline === undefined) return;
-		cm.dispatch({
-			effects: this.compartment.reconfigure([
-				unifiedMergeView({
-					original: baseline,
-					mergeControls: true,
-					// КРИТИЧНО: подсветка синтаксиса в удалённых блоках гоняет
-					// кастомный маркдаун-парсер Obsidian вне редактора — тот падает
-					// на null-viewport и рушит рендеринг всех декораций
-					syntaxHighlightDeletions: false,
-				}),
-				EditorView.updateListener.of((u) => this.onEditorUpdate(u, path)),
-			]),
-		});
-		const n = getChunks(cm.state)?.chunks.length;
-		console.log(`obsidian-review: attach ${path}, chunks=${n ?? "НЕТ ПОЛЯ"}`);
+		cm.dispatch({ effects: this.compartment.reconfigure(this.mergeExtensions(path, baseline)) });
 		this.addActions(view, path);
+	}
+
+	private mergeExtensions(path: string, baseline: string) {
+		return [
+			unifiedMergeView({
+				original: baseline,
+				// свои раздельные кнопки на удаление/добавление вместо встроенных
+				mergeControls: false,
+				// КРИТИЧНО: подсветка синтаксиса в удалённых блоках гоняет
+				// кастомный маркдаун-парсер Obsidian вне редактора — тот падает
+				// на null-viewport и рушит рендеринг всех декораций
+				syntaxHighlightDeletions: false,
+			}),
+			EditorView.updateListener.of((u) => this.onEditorUpdate(u, path)),
+			this.controlsPlugin(path),
+		];
+	}
+
+	// ---- раздельные кнопки: удаление и добавление — независимые блоки ----
+
+	/**
+	 * Ханк-замена в диффе — это «удалено старое + добавлено новое». Разделяем:
+	 * зелёная часть получает свои ✓/✗ (inline-виджет на первой добавленной
+	 * строке), красная — свои (кнопки инжектятся в блок удалённого текста,
+	 * который рисует @codemirror/merge).
+	 */
+	private controlsPlugin(path: string) {
+		const manager = this;
+		return ViewPlugin.fromClass(
+			class {
+				decorations: DecorationSet;
+				constructor(view: EditorView) {
+					this.decorations = manager.buildInsertControls(view, path);
+					requestAnimationFrame(() => manager.injectDeleteControls(view, path));
+				}
+				update(u: ViewUpdate) {
+					this.decorations = manager.buildInsertControls(u.view, path);
+					requestAnimationFrame(() => manager.injectDeleteControls(u.view, path));
+				}
+			},
+			{ decorations: (p) => p.decorations },
+		);
+	}
+
+	private buildInsertControls(view: EditorView, path: string): DecorationSet {
+		const builder = new RangeSetBuilder<Decoration>();
+		const info = getChunks(view.state);
+		if (!info) return builder.finish();
+		for (const chunk of info.chunks) {
+			if (chunk.fromB >= chunk.toB) continue; // ничего не добавлено
+			const pos = Math.min(chunk.fromB, view.state.doc.length);
+			builder.add(
+				pos,
+				pos,
+				Decoration.widget({ widget: new InsertControlsWidget(this, path, pos), side: -1 }),
+			);
+		}
+		return builder.finish();
+	}
+
+	private injectDeleteControls(view: EditorView, path: string) {
+		view.dom.querySelectorAll(".cm-deletedChunk:not(.obsreview-hasctl)").forEach((chunkEl) => {
+			chunkEl.classList.add("obsreview-hasctl");
+			const ctl = createSpan({ cls: "obsreview-btns obsreview-btns-del" });
+			ctl.appendChild(makeBtn("accept", "Принять удаление", () => {
+				this.chunkOp(path, view, view.posAtDOM(chunkEl), "del", "accept");
+			}));
+			ctl.appendChild(makeBtn("reject", "Отклонить удаление (вернуть текст)", () => {
+				this.chunkOp(path, view, view.posAtDOM(chunkEl), "del", "reject");
+			}));
+			chunkEl.prepend(ctl);
+		});
+	}
+
+	chunkOp(path: string, view: EditorView, pos: number, part: "ins" | "del", action: "accept" | "reject") {
+		const info = getChunks(view.state);
+		if (!info) return;
+		const chunk =
+			info.chunks.find((c) => pos >= c.fromB && pos <= c.toB) ??
+			info.chunks.reduce((best: Chunk | null, c) =>
+				!best || Math.abs(c.fromB - pos) < Math.abs(best.fromB - pos) ? c : best, null);
+		if (!chunk) return;
+
+		const baseline = getOriginalDoc(view.state).toString();
+		const doc = view.state.doc;
+		const fromA = Math.min(chunk.fromA, baseline.length);
+		const toA = Math.min(chunk.toA, baseline.length);
+		const fromB = Math.min(chunk.fromB, doc.length);
+		const toB = Math.min(chunk.toB, doc.length);
+		const oldText = baseline.slice(fromA, toA);
+		const newText = doc.sliceString(fromB, toB);
+
+		if (part === "del" && action === "accept") {
+			// старый текст окончательно забыт
+			this.setBaselineAndReattach(path, baseline.slice(0, fromA) + baseline.slice(toA));
+		} else if (part === "del" && action === "reject") {
+			// вернуть старые строки в файл, не трогая добавленных
+			view.dispatch({ changes: { from: fromB, to: fromB, insert: withTrailingNl(oldText) } });
+		} else if (part === "ins" && action === "accept") {
+			// добавленное признано частью базы; удалённое (если было) остаётся диффом
+			const glue = toA > 0 && !baseline.slice(0, toA).endsWith("\n") ? "\n" : "";
+			this.setBaselineAndReattach(path, baseline.slice(0, toA) + glue + withTrailingNl(newText) + baseline.slice(toA));
+		} else {
+			// отклонить добавление: убрать новые строки из файла
+			view.dispatch({ changes: { from: fromB, to: toB, insert: "" } });
+		}
+	}
+
+	private setBaselineAndReattach(path: string, baseline: string) {
+		if (!this.pending.has(path)) return;
+		this.pending.set(path, baseline);
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
+			if (!cm) continue;
+			cm.dispatch({ effects: this.compartment.reconfigure(this.mergeExtensions(path, baseline)) });
+			if (getChunks(cm.state)?.chunks.length === 0) {
+				this.pending.delete(path);
+				this.afterFileResolved(path);
+				return;
+			}
+		}
+		this.updateStatus();
 	}
 
 	/**
@@ -235,10 +365,17 @@ export class ReviewManager {
 		if (!this.pending.has(path)) return;
 		const chunks = getChunks(u.state);
 		if (!chunks) return;
-		this.pending.set(path, getOriginalDoc(u.state).toString());
+		const orig = getOriginalDoc(u.state).toString();
+		// плагины дат бампают frontmatter при каждом сохранении — не показываем это
+		const normalized = normalizeFrontmatter(orig, u.state.doc.toString());
+		if (normalized !== orig) {
+			// dispatch внутри update-листенера запрещён — откладываем
+			window.setTimeout(() => this.setBaselineAndReattach(path, normalized), 0);
+			return;
+		}
+		this.pending.set(path, orig);
 		if (chunks.chunks.length === 0) {
 			this.pending.delete(path);
-			// dispatch внутри update-листенера запрещён — откладываем
 			window.setTimeout(() => {
 				this.attachToOpenViews();
 				this.updateStatus();
@@ -246,6 +383,26 @@ export class ReviewManager {
 		} else {
 			this.updateStatus();
 		}
+	}
+
+	// ---- статистика для панели: +добавлено −удалено (в строках) ----
+
+	async diffStats(path: string): Promise<{ added: number; removed: number } | null> {
+		const baseline = this.pending.get(path);
+		if (baseline === undefined) return null;
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
+			const info = cm ? getChunks(cm.state) : null;
+			if (!cm || !info) continue;
+			return statsFromChunks(info.chunks, getOriginalDoc(cm.state).toString(), cm.state.doc.toString());
+		}
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return null;
+		const current = await this.app.vault.cachedRead(file);
+		const chunks = Chunk.build(Text.of(baseline.split("\n")), Text.of(current.split("\n")));
+		return statsFromChunks(chunks, baseline, current);
 	}
 
 	// ---- операции уровня файла и «всё» ----
@@ -358,5 +515,86 @@ export class ReviewManager {
 			this.statusEl.show();
 			this.statusEl.setText(`Ревью: ${n}`);
 		}
+	}
+}
+
+// ---- хелперы ----
+
+const FM_RE = /^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/;
+
+/**
+ * Подменяет frontmatter базлайна на текущий: свойства (created/last_modified
+ * и прочие) исключаются из визуального диффа. Для новых файлов не трогаем.
+ */
+function normalizeFrontmatter(baseline: string, current: string): string {
+	if (!baseline) return baseline;
+	const cur = current.match(FM_RE)?.[0];
+	if (!cur) return baseline;
+	if (FM_RE.test(baseline)) return baseline.replace(FM_RE, cur);
+	return cur + baseline;
+}
+
+function withTrailingNl(s: string): string {
+	return s === "" || s.endsWith("\n") ? s : `${s}\n`;
+}
+
+function countLines(s: string): number {
+	if (!s) return 0;
+	return s.split("\n").length - (s.endsWith("\n") ? 1 : 0);
+}
+
+function statsFromChunks(
+	chunks: readonly Chunk[],
+	baseline: string,
+	current: string,
+): { added: number; removed: number } {
+	let added = 0;
+	let removed = 0;
+	for (const c of chunks) {
+		added += countLines(current.slice(Math.min(c.fromB, current.length), Math.min(c.toB, current.length)));
+		removed += countLines(baseline.slice(Math.min(c.fromA, baseline.length), Math.min(c.toA, baseline.length)));
+	}
+	return { added, removed };
+}
+
+function makeBtn(kind: "accept" | "reject", title: string, onClick: () => void): HTMLButtonElement {
+	const b = document.createElement("button");
+	b.className = `obsreview-btn obsreview-btn-${kind}`;
+	b.textContent = kind === "accept" ? "✓" : "✕";
+	b.title = title;
+	b.onclick = (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClick();
+	};
+	return b;
+}
+
+class InsertControlsWidget extends WidgetType {
+	constructor(
+		private manager: ReviewManager,
+		private path: string,
+		private pos: number,
+	) {
+		super();
+	}
+
+	eq(other: InsertControlsWidget) {
+		return other.pos === this.pos && other.path === this.path;
+	}
+
+	toDOM(view: EditorView) {
+		const wrap = createSpan({ cls: "obsreview-btns obsreview-btns-ins" });
+		wrap.appendChild(
+			makeBtn("accept", "Принять добавление", () =>
+				this.manager.chunkOp(this.path, view, this.pos, "ins", "accept"),
+			),
+		);
+		wrap.appendChild(
+			makeBtn("reject", "Отклонить добавление (убрать текст)", () =>
+				this.manager.chunkOp(this.path, view, this.pos, "ins", "reject"),
+			),
+		);
+		return wrap;
 	}
 }
