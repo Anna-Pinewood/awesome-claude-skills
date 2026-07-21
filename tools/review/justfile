@@ -1,0 +1,31 @@
+set positional-arguments
+
+default:
+    @just --list
+
+# Launch review server (pass flags after --)
+launch *FLAGS:
+    bun run src/server.ts -- "$@"
+
+dev:
+    bun run src/server.ts
+
+build:
+    bun build src/frontend/main.ts --outdir dist --minify
+
+test:
+    bun test
+
+check:
+    bunx biome check .
+
+fix:
+    bunx biome check --write .
+
+typecheck:
+    bunx tsc --noEmit
+
+# Rebuild haskell + sql grammar wasms (vendored under vendor/wasm/).
+# Requires `brew install emscripten binaryen`.
+build-grammars:
+    ./scripts/build-grammars.sh

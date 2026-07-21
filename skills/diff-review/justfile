@@ -1,0 +1,8 @@
+set positional-arguments
+
+# Path to the review tool
+tool_dir := "../../tools/review"
+
+# Launch review server (pass flags after --)
+launch *FLAGS:
+    just -f {{tool_dir}}/justfile launch "$@"

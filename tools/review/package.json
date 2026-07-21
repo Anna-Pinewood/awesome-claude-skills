@@ -1,0 +1,27 @@
+{
+	"name": "agent-review",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun run src/server.ts",
+		"build": "bun build src/frontend/main.ts --outdir dist --minify",
+		"test": "bun test",
+		"check": "bunx biome check .",
+		"fix": "bunx biome check --write ."
+	},
+	"dependencies": {
+		"prettier": "^3.5.3",
+		"snabbdom": "^3.6.2",
+		"tree-sitter-wasms": "^0.1.13",
+		"web-tree-sitter": "0.22.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@derekstride/tree-sitter-sql": "^0.3.11",
+		"@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
+		"@types/bun": "latest",
+		"tree-sitter-dockerfile": "github:camdencheek/tree-sitter-dockerfile",
+		"tree-sitter-haskell": "^0.23.1"
+	}
+}

@@ -1,0 +1,475 @@
+import { existsSync } from "node:fs";
+import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { formatAnnotation, formatReview } from "./formatter.ts";
+import { formatFileForReview } from "./markdown.ts";
+import { parseDiff, textToFileDiff } from "./parser.ts";
+import type { ApiData, Commit, DiffData } from "./types.ts";
+
+// === CLI Parsing ===
+
+type CliArgs = {
+	readonly mode: "review" | "text";
+	readonly repo: string | null;
+	readonly range: string | null;
+	readonly files: readonly string[];
+	readonly message: string | null;
+	readonly project: string | null;
+	readonly saveDir: string;
+	readonly port: number;
+};
+
+const USAGE = `Usage:
+  Review mode: bun run src/server.ts --repo <path> --range <range> [options]
+  Text mode:   bun run src/server.ts --mode text --file <path> [--file <path>...] [options]
+
+Options: [--message <text>] [--project <name>] [--save-dir <path>] [--port <number>]`;
+
+const parseArgs = (argv: readonly string[]): CliArgs => {
+	const args = argv.slice(2);
+	let mode: "review" | "text" = "review";
+	let repo: string | null = null;
+	let range: string | null = null;
+	const files: string[] = [];
+	let message: string | null = null;
+	let project: string | null = null;
+	let saveDir: string | null = null;
+	let port = 0;
+
+	for (let i = 0; i < args.length; i++) {
+		const flag = args[i];
+		const next = args[i + 1];
+		switch (flag) {
+			case "--mode":
+				if (next === "text" || next === "review") mode = next;
+				i++;
+				break;
+			case "--repo":
+				repo = next ?? null;
+				i++;
+				break;
+			case "--range":
+				range = next ?? null;
+				i++;
+				break;
+			case "--file":
+				if (next) files.push(next);
+				i++;
+				break;
+			case "--message":
+				message = next ?? null;
+				i++;
+				break;
+			case "--project":
+				project = next ?? null;
+				i++;
+				break;
+			case "--save-dir":
+				saveDir = next ?? null;
+				i++;
+				break;
+			case "--port":
+				port = Number.parseInt(next ?? "0", 10);
+				i++;
+				break;
+		}
+	}
+
+	if (mode === "review" && (!repo || !range)) {
+		console.error(USAGE);
+		process.exit(1);
+	}
+
+	if (mode === "text" && files.length === 0) {
+		console.error(USAGE);
+		process.exit(1);
+	}
+
+	const resolvedFiles = files.map((f) => resolve(f));
+	const defaultProject =
+		mode === "text" && resolvedFiles.length === 1
+			? basename(resolvedFiles[0]!, extname(resolvedFiles[0]!))
+			: null;
+
+	const defaultSaveDir =
+		mode === "text"
+			? join(homedir(), ".claude", "annotations")
+			: join(homedir(), ".claude", "reviews", basename(resolve(repo!)));
+
+	return {
+		mode,
+		repo: repo ? resolve(repo) : null,
+		range,
+		files: resolvedFiles,
+		message,
+		project: project ?? defaultProject,
+		saveDir: saveDir ? resolve(saveDir) : defaultSaveDir,
+		port,
+	};
+};
+
+// === Git Helpers ===
+
+const git = async (repo: string, args: readonly string[]): Promise<string> => {
+	const proc = Bun.spawn(["git", "-C", repo, "-c", "core.quotePath=false", ...args], {
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	await proc.exited;
+	const stdout = await new Response(proc.stdout).text();
+	if (proc.exitCode !== 0) {
+		const stderr = await new Response(proc.stderr).text();
+		throw new Error(stderr.trim());
+	}
+	return stdout.trim();
+};
+
+const validateRepo = async (repo: string): Promise<void> => {
+	try {
+		await git(repo, ["rev-parse", "--git-dir"]);
+	} catch (e) {
+		console.error(`Error: '${repo}' is not a git repository`);
+		process.exit(1);
+	}
+};
+
+const validateRange = async (repo: string, range: string): Promise<void> => {
+	// rev-parse --verify works on single refs, not ranges like A..B
+	// Validate each side of the range separately
+	const parts = range.includes("..") ? range.split("..").filter(Boolean) : [range];
+	for (const part of parts) {
+		try {
+			await git(repo, ["rev-parse", "--verify", part!]);
+		} catch {
+			console.error(`Error: ref '${part}' in range '${range}' does not resolve`);
+			process.exit(1);
+		}
+	}
+};
+
+const getCommits = async (repo: string, range: string): Promise<readonly Commit[]> => {
+	const raw = await git(repo, ["log", "--format=%H%n%s%n%ai", "--reverse", range]);
+	if (!raw) return [];
+	const lines = raw.split("\n");
+	const commits: Commit[] = [];
+	for (let i = 0; i + 2 < lines.length; i += 3) {
+		commits.push({
+			hash: lines[i]!,
+			message: lines[i + 1]!,
+			date: lines[i + 2]!,
+		});
+	}
+	return commits;
+};
+
+const getDiff = async (repo: string, range: string): Promise<DiffData> => {
+	const raw = await git(repo, ["diff", "-U99999", "-M", range]);
+	return { files: parseDiff(raw) };
+};
+
+const getCommitDiff = async (repo: string, hash: string): Promise<DiffData> => {
+	const raw = await git(repo, ["diff", "-U99999", "-M", `${hash}^..${hash}`]);
+	return { files: parseDiff(raw) };
+};
+
+// === HTTP Server ===
+
+const buildBundle = async (
+	entrypoint: string,
+	opts: { readonly external?: readonly string[] } = {},
+): Promise<string> => {
+	const result = await Bun.build({
+		entrypoints: [entrypoint],
+		minify: true,
+		target: "browser",
+		external: opts.external ? [...opts.external] : undefined,
+	});
+	if (!result.success) {
+		throw new Error(`Build failed: ${result.logs.map((l) => l.message).join("\n")}`);
+	}
+	return await result.outputs[0]!.text();
+};
+
+const WASM_FILENAME_RE = /^(tree-sitter|tree-sitter-[a-z_]+)\.wasm$/;
+
+const resolveWasmPath = (filename: string): string | null => {
+	if (!WASM_FILENAME_RE.test(filename)) return null;
+	// web-tree-sitter 0.22.x ships its runtime as `tree-sitter.wasm`; grammars
+	// come from tree-sitter-wasms/out. 0.22 is pinned because 0.23+ requires
+	// grammars with a dylink section that tree-sitter-wasms doesn't build.
+	if (filename === "tree-sitter.wasm") {
+		return join(import.meta.dir, "../node_modules/web-tree-sitter/tree-sitter.wasm");
+	}
+	// Locally-built grammars (haskell, sql) live in vendor/wasm/. Check there first
+	// so we can fill gaps in tree-sitter-wasms without maintaining our own fork.
+	const vendorPath = join(import.meta.dir, "../vendor/wasm", filename);
+	if (existsSync(vendorPath)) return vendorPath;
+	return join(import.meta.dir, "../node_modules/tree-sitter-wasms/out", filename);
+};
+
+const startServer = (apiData: ApiData, args: CliArgs, bundledJs: string, workerJs: string) => {
+	const htmlPath = join(import.meta.dir, "../static/index.html");
+
+	const server = Bun.serve({
+		port: args.port,
+		fetch: async (req) => {
+			const url = new URL(req.url);
+
+			if (req.method === "GET" && url.pathname === "/") {
+				const html = await Bun.file(htmlPath).text();
+				const injected = html.replace("<!-- BUNDLE -->", '<script src="/bundle.js"></script>');
+				return new Response(injected, {
+					headers: { "Content-Type": "text/html" },
+				});
+			}
+
+			if (req.method === "GET" && url.pathname === "/bundle.js") {
+				return new Response(bundledJs, {
+					headers: { "Content-Type": "application/javascript" },
+				});
+			}
+
+			if (req.method === "GET" && url.pathname === "/worker.js") {
+				return new Response(workerJs, {
+					headers: { "Content-Type": "application/javascript" },
+				});
+			}
+
+			if (req.method === "GET" && url.pathname.startsWith("/wasm/")) {
+				const filename = url.pathname.slice("/wasm/".length);
+				const wasmPath = resolveWasmPath(filename);
+				if (!wasmPath) return new Response("Not Found", { status: 404 });
+				const file = Bun.file(wasmPath);
+				if (!(await file.exists())) return new Response("Not Found", { status: 404 });
+				return new Response(file, {
+					headers: { "Content-Type": "application/wasm" },
+				});
+			}
+
+			if (req.method === "GET" && url.pathname === "/api/data") {
+				const body = JSON.stringify(apiData);
+				const accept = req.headers.get("accept-encoding") ?? "";
+				if (accept.includes("gzip")) {
+					const gz = Bun.gzipSync(body);
+					return new Response(gz.buffer as ArrayBuffer, {
+						headers: {
+							"Content-Type": "application/json",
+							"Content-Encoding": "gzip",
+						},
+					});
+				}
+				return new Response(body, { headers: { "Content-Type": "application/json" } });
+			}
+
+			if (req.method === "POST" && url.pathname === "/api/submit") {
+				const submission = await req.json();
+				const formatted =
+					apiData.mode === "annotate"
+						? formatAnnotation(submission, args.files)
+						: (() => {
+								const commits = [...apiData.commits];
+								const resolvedRange =
+									commits.length > 0
+										? `${commits[0]!.hash.slice(0, 7)}..${commits[commits.length - 1]!.hash.slice(0, 7)}`
+										: (args.range ?? "");
+								return formatReview(submission, commits, resolvedRange);
+							})();
+
+				await mkdir(args.saveDir, { recursive: true });
+
+				const now = new Date();
+				const pad = (n: number) => String(n).padStart(2, "0");
+				const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+				const filename = args.project ? `${timestamp}-${args.project}.md` : `${timestamp}.md`;
+				const savePath = join(args.saveDir, filename);
+
+				await Bun.write(savePath, formatted);
+				const saveLabel = apiData.mode === "annotate" ? "Annotation" : "Review";
+				console.error(`${saveLabel} saved to ${savePath}`);
+				console.log(`saved: ${savePath}`);
+
+				setTimeout(() => process.exit(0), 500);
+				return Response.json({ ok: true });
+			}
+
+			if (req.method === "GET" && url.pathname === "/api/reviews") {
+				try {
+					const files = await readdir(args.saveDir);
+					const reviews = files
+						.filter((f) => f.endsWith(".md"))
+						.sort()
+						.reverse()
+						.map((f) => ({ filename: f }));
+					return Response.json(reviews);
+				} catch {
+					return Response.json([]);
+				}
+			}
+
+			if (req.method === "GET" && url.pathname.startsWith("/api/reviews/")) {
+				const filename = decodeURIComponent(url.pathname.slice("/api/reviews/".length));
+				try {
+					const content = await Bun.file(join(args.saveDir, filename)).text();
+					return Response.json({ content });
+				} catch {
+					return new Response("Not Found", { status: 404 });
+				}
+			}
+
+			if (req.method === "DELETE" && url.pathname.startsWith("/api/reviews/")) {
+				const filename = decodeURIComponent(url.pathname.slice("/api/reviews/".length));
+				try {
+					await unlink(join(args.saveDir, filename));
+					return Response.json({ ok: true });
+				} catch {
+					return new Response("Not Found", { status: 404 });
+				}
+			}
+
+			return new Response("Not Found", { status: 404 });
+		},
+	});
+
+	return server;
+};
+
+// === Main ===
+
+const buildReviewData = async (args: CliArgs): Promise<ApiData> => {
+	await validateRepo(args.repo!);
+	await validateRange(args.repo!, args.range!);
+
+	const commits = await getCommits(args.repo!, args.range!);
+	const combinedDiff = await getDiff(args.repo!, args.range!);
+
+	if (combinedDiff.files.length === 0 && commits.length === 0) {
+		console.error("No changes in the specified range");
+		process.exit(0);
+	}
+
+	const diffs: Record<string, DiffData> = { combined: combinedDiff };
+	for (const commit of commits) {
+		diffs[commit.hash] = await getCommitDiff(args.repo!, commit.hash);
+	}
+
+	return {
+		mode: "review",
+		commits,
+		diffs,
+		message: args.message,
+		repo: args.repo!,
+		project: args.project,
+	};
+};
+
+const isBinaryFile = async (path: string): Promise<boolean> => {
+	const chunk = await Bun.file(path).slice(0, 8192).arrayBuffer();
+	return new Uint8Array(chunk).includes(0);
+};
+
+const commonParent = (paths: readonly string[]): string => {
+	if (paths.length <= 1) return dirname(paths[0] ?? ".");
+	const parts = paths.map((p) => p.split("/"));
+	const minLen = Math.min(...parts.map((p) => p.length));
+	let common = 0;
+	for (let i = 0; i < minLen; i++) {
+		if (parts.every((p) => p[i] === parts[0]![i])) common = i + 1;
+		else break;
+	}
+	return parts[0]!.slice(0, common).join("/") || "/";
+};
+
+const expandPaths = async (paths: readonly string[]): Promise<readonly string[]> => {
+	const result: string[] = [];
+	for (const p of paths) {
+		let info: Awaited<ReturnType<typeof stat>>;
+		try {
+			info = await stat(p);
+		} catch {
+			console.error(`Error: '${p}' does not exist`);
+			process.exit(1);
+		}
+		if (info.isFile()) {
+			result.push(p);
+		} else if (info.isDirectory()) {
+			const entries = await readdir(p, { recursive: true });
+			for (const relPath of entries) {
+				if (relPath.split("/").some((s) => s.startsWith("."))) continue;
+				const fullPath = join(p, relPath);
+				try {
+					const entryInfo = await stat(fullPath);
+					if (entryInfo.isFile()) result.push(fullPath);
+				} catch {
+					// Skip unreadable entries (broken symlinks, etc.)
+				}
+			}
+		}
+	}
+	return result.sort();
+};
+
+const buildAnnotateData = async (args: CliArgs): Promise<ApiData> => {
+	const expanded = await expandPaths(args.files);
+	const textFiles: string[] = [];
+	for (const filePath of expanded) {
+		if (!(await isBinaryFile(filePath))) textFiles.push(filePath);
+	}
+
+	if (textFiles.length === 0) {
+		console.error("No text files found in the specified paths");
+		process.exit(1);
+	}
+
+	const base = commonParent(textFiles);
+	const fileDiffs = await Promise.all(
+		textFiles.map(async (filePath) => {
+			const rawContent = await Bun.file(filePath).text();
+			const content = await formatFileForReview(rawContent, filePath);
+			const displayPath = textFiles.length === 1 ? basename(filePath) : relative(base, filePath);
+			return textToFileDiff(content, displayPath);
+		}),
+	);
+
+	const diffs: Record<string, DiffData> = {
+		combined: { files: fileDiffs },
+	};
+
+	return {
+		mode: "annotate",
+		commits: [],
+		diffs,
+		message: args.message,
+		repo: args.files.length === 1 ? args.files[0]! : base,
+		project: args.project,
+	};
+};
+
+const main = async () => {
+	const args = parseArgs(Bun.argv);
+
+	const apiData =
+		args.mode === "text" ? await buildAnnotateData(args) : await buildReviewData(args);
+
+	const [bundledJs, workerJs] = await Promise.all([
+		buildBundle(join(import.meta.dir, "frontend/main.ts")),
+		// web-tree-sitter 0.22 has runtime-gated `require("fs")` / `require("path")`
+		// for Node env; externals keep the browser bundle from trying to resolve them.
+		buildBundle(join(import.meta.dir, "frontend/highlight-worker.ts"), {
+			external: ["fs", "path", "module"],
+		}),
+	]);
+
+	const server = startServer(apiData, args, bundledJs, workerJs);
+	const port = server.port;
+
+	const label = args.mode === "text" ? "Annotation" : "Review";
+	console.error(`${label} server running at http://localhost:${port}`);
+	Bun.spawn(["open", `http://localhost:${port}`]);
+};
+
+process.on("SIGINT", () => {
+	process.exit(1);
+});
+
+main();
