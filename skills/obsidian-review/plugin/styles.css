@@ -2,18 +2,18 @@
 
 /* добавленное — зелёным */
 .cm-changedLine {
-	background: rgba(var(--color-green-rgb), 0.09) !important;
+	background: rgba(var(--color-green-rgb), 0.18) !important;
 }
 .cm-changedText {
-	background: rgba(var(--color-green-rgb), 0.28) !important;
+	background: rgba(var(--color-green-rgb), 0.40) !important;
 }
 
 /* удалённое — красным, зачёркнуто */
 .cm-deletedChunk {
-	background: rgba(var(--color-red-rgb), 0.09) !important;
+	background: rgba(var(--color-red-rgb), 0.18) !important;
 }
 .cm-deletedChunk .cm-deletedText {
-	background: rgba(var(--color-red-rgb), 0.22);
+	background: rgba(var(--color-red-rgb), 0.32);
 	/* у @codemirror/merge своя тема с зачёркиванием — глушим её */
 	text-decoration: none !important;
 }
@@ -78,16 +78,16 @@
 
 /* подсветка изменений в merge-вью */
 .obsreview-diff-panes .cm-merge-a .cm-changedLine {
-	background: rgba(var(--color-red-rgb), 0.09) !important;
+	background: rgba(var(--color-red-rgb), 0.18) !important;
 }
 .obsreview-diff-panes .cm-merge-a .cm-changedText {
-	background: rgba(var(--color-red-rgb), 0.22) !important;
+	background: rgba(var(--color-red-rgb), 0.32) !important;
 }
 .obsreview-diff-panes .cm-merge-b .cm-changedLine {
-	background: rgba(var(--color-green-rgb), 0.09) !important;
+	background: rgba(var(--color-green-rgb), 0.18) !important;
 }
 .obsreview-diff-panes .cm-merge-b .cm-changedText {
-	background: rgba(var(--color-green-rgb), 0.28) !important;
+	background: rgba(var(--color-green-rgb), 0.40) !important;
 }
 
 /* ---- боковая панель ревью ---- */

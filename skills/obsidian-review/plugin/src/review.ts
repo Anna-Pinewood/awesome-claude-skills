@@ -16,6 +16,7 @@ export class ReviewManager {
 	private compartment = new Compartment();
 	private actionEls = new WeakMap<MarkdownView, HTMLElement[]>();
 	private statusEl: HTMLElement | null = null;
+	lastError: string | null = null;
 
 	constructor(private plugin: ObsidianReviewPlugin) {}
 
@@ -115,6 +116,8 @@ export class ReviewManager {
 			return {
 				path: view.file?.path ?? null,
 				mode: view.getMode(),
+				visible: cm ? cm.dom.offsetParent !== null : null,
+				viewport: cm ? { from: cm.viewport.from, to: cm.viewport.to, docLen: cm.state.doc.length } : null,
 				hasEditor: Boolean(cm),
 				hasMerge: chunks !== null,
 				chunks: chunks?.chunks.length ?? null,
@@ -122,9 +125,35 @@ export class ReviewManager {
 				domChanged: cm?.dom.querySelectorAll(".cm-changedLine, .cm-changedText").length ?? null,
 				domDeleted: cm?.dom.querySelectorAll(".cm-deletedChunk").length ?? null,
 				domGutter: cm?.dom.querySelectorAll(".cm-changeGutter").length ?? null,
+				changedBg: (() => {
+					const el = cm?.dom.querySelector(".cm-changedLine");
+					return el ? getComputedStyle(el).backgroundColor : null;
+				})(),
+				cmClasses: (() => {
+					if (!cm) return null;
+					const all = new Set<string>();
+					cm.dom.querySelectorAll('[class*="cm-"]').forEach((el) => {
+						for (const c of Array.from(el.classList)) all.add(c);
+					});
+					return [...all].filter((c) =>
+						/changed|inserted|deleted|merge|chunk|spacer/i.test(c),
+					);
+				})(),
+				deletedChunk: (() => {
+					const el = cm?.dom.querySelector(".cm-deletedChunk") as HTMLElement | null;
+					if (!el) return null;
+					return {
+						height: el.offsetHeight,
+						display: getComputedStyle(el).display,
+						html: el.outerHTML.slice(0, 700),
+					};
+				})(),
 			};
 		});
-		return { pending: [...this.pending.keys()], views };
+		const greenVar = getComputedStyle(document.body)
+			.getPropertyValue("--color-green-rgb")
+			.trim();
+		return { pending: [...this.pending.keys()], lastError: this.lastError, greenVar, views };
 	}
 
 	private async openForReview(path: string) {
@@ -135,7 +164,7 @@ export class ReviewManager {
 			leaf = this.app.workspace.getLeaf("tab");
 			await leaf.openFile(file, { active: false });
 		}
-		// подсветка живёт в редакторе — переводим вкладку в Live Preview/source
+		// подсветка живёт в редакторе — переводим вкладку в Live Preview
 		const state = leaf.getViewState();
 		if (state.type === "markdown" && state.state?.mode !== "source") {
 			state.state = { ...state.state, mode: "source" };
@@ -182,7 +211,14 @@ export class ReviewManager {
 		if (baseline === undefined) return;
 		cm.dispatch({
 			effects: this.compartment.reconfigure([
-				unifiedMergeView({ original: baseline, mergeControls: true }),
+				unifiedMergeView({
+					original: baseline,
+					mergeControls: true,
+					// КРИТИЧНО: подсветка синтаксиса в удалённых блоках гоняет
+					// кастомный маркдаун-парсер Obsidian вне редактора — тот падает
+					// на null-viewport и рушит рендеринг всех декораций
+					syntaxHighlightDeletions: false,
+				}),
 				EditorView.updateListener.of((u) => this.onEditorUpdate(u, path)),
 			]),
 		});

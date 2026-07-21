@@ -91,6 +91,7 @@ export class ReviewServer {
 				res.end('{"ok":true}');
 			} catch (e) {
 				console.error("obsidian-review: не смог обработать пакет", e);
+				this.plugin.review.lastError = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
 				res.writeHead(400);
 				res.end(String(e));
 			}
