@@ -75,6 +75,14 @@ out="$("$SCRIPT_DIR/push-review.sh")"
 grep -q systemMessage <<<"$out" || fail "s4: нет сообщения пользователю"
 ok "s4: неудачный push ничего не фиксирует"
 
+# --- сценарий 4б: data.json плагина отсутствует (плагин ещё не запускался) — не падаем
+mv "$OBSREVIEW_VAULT/.obsidian/plugins/obsidian-review/data.json" "$TMP/data.json.bak"
+out="$("$SCRIPT_DIR/push-review.sh")" || fail "s4b: упал без data.json"
+grep -q systemMessage <<<"$out" || fail "s4b: нет сообщения пользователю"
+[ -f "$OBSREVIEW_GIT_DIR/task-active" ] || fail "s4b: маркер удалён"
+mv "$TMP/data.json.bak" "$OBSREVIEW_VAULT/.obsidian/plugins/obsidian-review/data.json"
+ok "s4b: без data.json — вежливая недоставка"
+
 # --- сценарий 5: успешный push — пакет корректен, новый базлайн, маркер снят
 uv run python -c "
 from http.server import HTTPServer, BaseHTTPRequestHandler

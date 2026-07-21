@@ -9,9 +9,11 @@ OBSREVIEW_LOCK="$OBSREVIEW_GIT_DIR/task-active.lock"
 
 # Токен плагин генерирует сам; скрипты читают его из data.json плагина,
 # чтобы не копировать руками. До первого запуска плагина токена нет — это ок.
+# Не должен падать, даже если плагин ещё ни разу не запускался и data.json нет:
+# пустой токен просто приведёт к 401/недоставке, это штатный путь.
 obsreview_token() {
 	jq -r '.token // empty' \
-		"$OBSREVIEW_VAULT/.obsidian/plugins/obsidian-review/data.json" 2>/dev/null
+		"$OBSREVIEW_VAULT/.obsidian/plugins/obsidian-review/data.json" 2>/dev/null || true
 }
 
 obsreview_git() {
