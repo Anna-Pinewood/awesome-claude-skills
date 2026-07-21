@@ -4,6 +4,7 @@ import { EditorView, ViewUpdate } from "@codemirror/view";
 import { getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
 import type ObsidianReviewPlugin from "./main";
 import { DIFF_VIEW_TYPE } from "./diffView";
+import { PANEL_VIEW_TYPE, ReviewPanelView } from "./panel";
 
 export interface PushPayload {
 	files: { path: string; baseline: string; deleted: boolean }[];
@@ -13,7 +14,6 @@ export class ReviewManager {
 	/** путь → базлайн (старое содержимое). Только память, только текущая сессия. */
 	private pending = new Map<string, string>();
 	private compartment = new Compartment();
-	private attached = new WeakSet<EditorView>();
 	private actionEls = new WeakMap<MarkdownView, HTMLElement[]>();
 	private statusEl: HTMLElement | null = null;
 
@@ -59,8 +59,65 @@ export class ReviewManager {
 		new Notice(msg, 8000);
 
 		for (const path of toOpen) await this.openForReview(path);
+		await this.openPanel();
 		this.attachToOpenViews();
+		// рендеринг вкладок в Obsidian асинхронный — страхуемся повторными проходами
+		window.setTimeout(() => this.attachToOpenViews(), 200);
+		window.setTimeout(() => this.attachToOpenViews(), 1000);
 		this.updateStatus();
+	}
+
+	pendingEntries(): { path: string; created: boolean }[] {
+		return [...this.pending.entries()].map(([path, baseline]) => ({
+			path,
+			created: baseline === "",
+		}));
+	}
+
+	/** Открыть файл ревью (из панели): переиспользуем вкладку, если уже открыт. */
+	async revealFile(path: string) {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		const existing = this.findMarkdownLeaf(path);
+		const leaf = existing ?? this.app.workspace.getLeaf("tab");
+		if (!existing) await leaf.openFile(file);
+		this.app.workspace.revealLeaf(leaf);
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
+		this.attachToOpenViews();
+	}
+
+	async openPanel() {
+		let leaf = this.app.workspace.getLeavesOfType(PANEL_VIEW_TYPE)[0];
+		if (!leaf) {
+			const right = this.app.workspace.getRightLeaf(false);
+			if (!right) return;
+			await right.setViewState({ type: PANEL_VIEW_TYPE, active: false });
+			leaf = right;
+		}
+		this.app.workspace.revealLeaf(leaf);
+	}
+
+	private refreshPanel() {
+		for (const leaf of this.app.workspace.getLeavesOfType(PANEL_VIEW_TYPE)) {
+			if (leaf.view instanceof ReviewPanelView) leaf.view.render();
+		}
+	}
+
+	/** Живое состояние для отладки (GET /status). */
+	debugStatus() {
+		const views = this.app.workspace.getLeavesOfType("markdown").map((leaf) => {
+			const view = leaf.view as MarkdownView;
+			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
+			const chunks = cm ? getChunks(cm.state) : null;
+			return {
+				path: view.file?.path ?? null,
+				mode: view.getMode(),
+				hasEditor: Boolean(cm),
+				hasMerge: chunks !== null,
+				chunks: chunks?.chunks.length ?? null,
+			};
+		});
+		return { pending: [...this.pending.keys()], views };
 	}
 
 	private async openForReview(path: string) {
@@ -88,16 +145,25 @@ export class ReviewManager {
 
 	// ---- подключение unified merge view к открытым редакторам ----
 
+	/**
+	 * Подключённость определяем по САМОМУ состоянию редактора (есть ли в нём
+	 * merge-поле), а не по флажку на инстансе: Obsidian переиспользует один
+	 * EditorView для разных файлов и пересоздаёт состояние при переключениях —
+	 * любой внешний флажок немедленно врёт.
+	 */
 	attachToOpenViews() {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view as MarkdownView;
 			const path = view.file?.path;
 			const cm = (view.editor as unknown as { cm?: EditorView })?.cm;
 			if (!cm) continue;
+			const hasMerge = getChunks(cm.state) !== null;
 			if (path && this.pending.has(path)) {
-				if (!this.attached.has(cm)) this.attach(view, cm, path);
-			} else if (this.attached.has(cm)) {
-				this.detach(view, cm);
+				if (!hasMerge) this.attach(view, cm, path);
+				else this.addActions(view, path);
+			} else {
+				if (hasMerge) cm.dispatch({ effects: this.compartment.reconfigure([]) });
+				this.removeActions(view);
 			}
 		}
 	}
@@ -111,14 +177,9 @@ export class ReviewManager {
 				EditorView.updateListener.of((u) => this.onEditorUpdate(u, path)),
 			]),
 		});
-		this.attached.add(cm);
+		const n = getChunks(cm.state)?.chunks.length;
+		console.log(`obsidian-review: attach ${path}, chunks=${n ?? "НЕТ ПОЛЯ"}`);
 		this.addActions(view, path);
-	}
-
-	private detach(view: MarkdownView, cm: EditorView) {
-		cm.dispatch({ effects: this.compartment.reconfigure([]) });
-		this.attached.delete(cm);
-		this.removeActions(view);
 	}
 
 	/**
@@ -240,6 +301,7 @@ export class ReviewManager {
 	}
 
 	private updateStatus() {
+		this.refreshPanel();
 		if (!this.statusEl) return;
 		const n = this.pending.size;
 		if (n === 0) {

@@ -29,13 +29,18 @@ export class ReviewServer {
 	}
 
 	private handle(req: http.IncomingMessage, res: http.ServerResponse) {
-		if (req.method !== "POST" || req.url !== "/review") {
-			res.writeHead(404);
+		if (req.headers.authorization !== `Bearer ${this.plugin.settings.token}`) {
+			res.writeHead(401);
 			res.end();
 			return;
 		}
-		if (req.headers.authorization !== `Bearer ${this.plugin.settings.token}`) {
-			res.writeHead(401);
+		if (req.method === "GET" && req.url === "/status") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(this.plugin.review.debugStatus()));
+			return;
+		}
+		if (req.method !== "POST" || req.url !== "/review") {
+			res.writeHead(404);
 			res.end();
 			return;
 		}

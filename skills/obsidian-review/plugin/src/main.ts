@@ -2,6 +2,7 @@ import { App, MarkdownView, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { ReviewManager } from "./review";
 import { ReviewServer } from "./server";
 import { DIFF_VIEW_TYPE, SideBySideDiffView } from "./diffView";
+import { PANEL_VIEW_TYPE, ReviewPanelView } from "./panel";
 
 interface ReviewSettings {
 	port: number;
@@ -28,6 +29,13 @@ export default class ObsidianReviewPlugin extends Plugin {
 
 		this.registerEditorExtension(this.review.editorExtension());
 		this.registerView(DIFF_VIEW_TYPE, (leaf) => new SideBySideDiffView(leaf, this));
+		this.registerView(PANEL_VIEW_TYPE, (leaf) => new ReviewPanelView(leaf, this));
+
+		this.addCommand({
+			id: "open-panel",
+			name: "Открыть панель ревью",
+			callback: () => void this.review.openPanel(),
+		});
 
 		this.addCommand({
 			id: "accept-all",
@@ -65,6 +73,7 @@ export default class ObsidianReviewPlugin extends Plugin {
 			this.app.workspace.on("active-leaf-change", () => this.review.attachToOpenViews()),
 		);
 		this.registerEvent(this.app.workspace.on("file-open", () => this.review.attachToOpenViews()));
+		this.registerEvent(this.app.workspace.on("layout-change", () => this.review.attachToOpenViews()));
 
 		this.review.initStatusBar(this.addStatusBarItem());
 		this.addSettingTab(new ReviewSettingTab(this.app, this));

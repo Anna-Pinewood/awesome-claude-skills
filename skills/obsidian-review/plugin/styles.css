@@ -14,7 +14,8 @@
 }
 .cm-deletedChunk .cm-deletedText {
 	background: rgba(var(--color-red-rgb), 0.22);
-	text-decoration: line-through;
+	/* у @codemirror/merge своя тема с зачёркиванием — глушим её */
+	text-decoration: none !important;
 }
 
 /* встроенные кнопки Accept/Reject у ханков unified-вью */
@@ -87,6 +88,82 @@
 }
 .obsreview-diff-panes .cm-merge-b .cm-changedText {
 	background: rgba(var(--color-green-rgb), 0.28) !important;
+}
+
+/* ---- боковая панель ревью ---- */
+
+.obsreview-panel-empty {
+	color: var(--text-muted);
+	padding: 8px;
+}
+
+.obsreview-panel-header {
+	display: flex;
+	gap: 6px;
+	padding: 4px 4px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 6px;
+}
+.obsreview-panel-header button {
+	flex: 1;
+	font-size: var(--font-ui-smaller);
+}
+
+.obsreview-panel-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+.obsreview-panel-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.obsreview-panel-name {
+	flex: 1;
+	min-width: 0;
+}
+.obsreview-panel-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.obsreview-panel-dir {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.obsreview-badge {
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 8px;
+	flex-shrink: 0;
+}
+.obsreview-badge.is-created {
+	background: rgba(var(--color-green-rgb), 0.18);
+	color: var(--color-green);
+}
+.obsreview-badge.is-modified {
+	background: rgba(var(--color-yellow-rgb), 0.2);
+	color: var(--color-yellow);
+}
+
+.obsreview-panel-btns {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+.obsreview-panel-btns button {
+	padding: 2px 7px;
+	font-size: 11px;
 }
 
 /* кнопки ✓/✗ на ханках справа */
